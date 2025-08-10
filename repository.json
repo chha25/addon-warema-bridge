@@ -1,5 +1,8 @@
 {
-  "name": "Warema WMS Bridge add-on repository",
+  "name": "Warema WMS Bridge Add-on",
   "url": "https://github.com/giannello/addon-warema-bridge",
-  "maintainer": "Giuseppe Iannello <giuseppe.iannello@brokenloop.net>"
+  "maintainer": "Dein Name <deine.email@example.com>",
+  "slug": "warema-bridge-repo",
+  "type": "addon",
+  "version": "1.2.0"
 }
