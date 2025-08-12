@@ -1,4 +1,4 @@
-const warema = require('warema-wms-venetian-blinds');
+const { WaremaWmsVenetianBlinds } = require('warema-wms-venetian-blinds');
 var mqtt = require('mqtt')
 
 process.on('SIGINT', function() {
@@ -227,19 +227,19 @@ var client = mqtt.connect(
   }
 )
 
-var stickUsb
+var stickUsb;
 
 client.on('connect', function (connack) {
   console.log('Connected to MQTT')
   client.subscribe('warema/#')
   client.subscribe('homeassistant/status')
-  stickUsb = new warema(settingsPar.wmsSerialPort,
-    settingsPar.wmsChannel,
-    settingsPar.wmsPanid,
-    settingsPar.wmsKey,
-    {},
-    callback
-  );
+  stickUsb = new WaremaWmsVenetianBlinds({
+    serialPort: settingsPar.wmsSerialPort,
+    channel: settingsPar.wmsChannel,
+    panid: settingsPar.wmsPanid,
+    key: settingsPar.wmsKey,
+    callback: callback
+  });
 })
 
 client.on('error', function (error) {
