@@ -10,8 +10,8 @@ RUN \
     apk add --no-cache npm
 
 # Copy root filesystem
-COPY rootfs/srv/package-lock.json /srv
-COPY rootfs/srv/package.json /srv
+COPY warema-bridge/rootfs/srv/package-lock.json /srv
+COPY warema-bridge/rootfs/srv/package.json /srv
 
 WORKDIR /srv
 
@@ -19,6 +19,6 @@ RUN npm ci
 
 RUN apk del --no-cache --purge .build-deps && rm -rf /root/.npm /root/.cache
 
-COPY rootfs/srv /srv
+COPY warema-bridge/rootfs/srv /srv
 
-ENTRYPOINT ["/usr/bin/node", "/srv/bridge.js"]
+ENTRYPOINT ["/usr/bin/node", "warema-bridge/srv/bridge.js"]
