@@ -4,20 +4,12 @@ version: "2.0.0"
 slug: addon-warema-bridge
 description: "Bridge for Warema WMS devices with MQTT support"
 arch:
-  - amd64
   - aarch64
+  - amd64
   - armv7
-  - armhf
-startup: "application"
+  - i386
+startup: "services"
 boot: "auto"
-host_network: false
-host_ipc: false
-privileged: false
-ingress: false
-hassio_role: default
-homeassistant_api: false
-homeassistant: "2023.10.0"
-panel_admin: false
 icon: "icon.png"
 
 map:
@@ -27,17 +19,17 @@ devices:
   - /dev/ttyUSB0
 
 options:
-  MQTT_SERVER: "mqtt://core-mosquitto:1883"
-  MQTT_USER: ""
-  MQTT_PASSWORD: ""
-  SERIAL_PORT: "/dev/ttyUSB0"
-  LOG_LEVEL: "info"
+  wms_serial_port: null
 
 schema:
-  MQTT_SERVER: str
-  MQTT_USER: str
-  MQTT_PASSWORD: str
-  SERIAL_PORT: str
-  LOG_LEVEL: str
+  wms_key: str?
+  wms_pan_id: str?
+  wms_channel: int?
+  wms_serial_port: device(subsystem=tty)
+  ignored_devices: str?
+  force_devices: str?
+
+services:
+  - "mqtt:need"
 
 image: "ghcr.io/home-assistant/{arch}-addon-warema-bridge"
