@@ -2,5 +2,12 @@
     "dependencies": {
         "mqtt": "^5.3.0",
         "warema-wms-venetian-blinds": "^2.0.5"
+    },
+    "devDependencies": {
+        "jest": "^30.0.5",
+        "sinon": "^21.0.0"
+    },
+    "scripts": {
+        "test": "jest"
     }
 }

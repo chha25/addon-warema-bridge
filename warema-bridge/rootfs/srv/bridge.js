@@ -281,3 +281,9 @@ client.on('message', function (topic, message) {
     }
   }
 })
+
+module.exports = {
+  registerDevice,
+  registerDevices,
+  callback
+};
