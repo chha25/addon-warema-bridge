@@ -2,7 +2,7 @@
 name: Warema WMS Bridge
 version: "2.0.0"
 slug: addon-warema-bridge
-description: "Bridge for Warema WMS devices with MQTT support (migrated to current Home Assistant add-on standards)."
+description: "Bridge for Warema WMS devices with MQTT support"
 arch:
   - amd64
   - aarch64
