@@ -10,6 +10,7 @@ arch:
   - i386
 startup: "services"
 boot: "auto"
+init: false
 icon: "icon.png"
 
 map:
