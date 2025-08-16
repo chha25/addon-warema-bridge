@@ -31,5 +31,3 @@ schema:
 
 services:
   - "mqtt:need"
-
-image: "ghcr.io/home-assistant/{arch}-addon-warema-bridge"
