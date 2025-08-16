@@ -2,7 +2,7 @@
   "name": "Warema WMS Bridge Add-on",
   "url": "https://github.com/chha25/addon-warema-bridge",
   "maintainer": "chha25",
-  "slug": "warema-bridge-repo",
+  "slug": "addon-warema-bridge",
   "type": "addon",
   "version": "2.0.0"
 }
