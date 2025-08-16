@@ -8,6 +8,7 @@
         "sinon": "^21.0.0"
     },
     "scripts": {
-        "test": "jest"
+        "test": "jest", 
+        "start": "node bridge.js"
     }
 }
