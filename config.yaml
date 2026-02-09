@@ -1,6 +1,6 @@
 ---
 name: Warema WMS Bridge
-version: "2.0.0"
+version: "2.1.0"
 slug: addon-warema-bridge
 description: "Bridge for Warema WMS devices with MQTT support"
 arch:
@@ -20,13 +20,26 @@ devices:
   - /dev/ttyUSB0
 
 options:
-  wms_serial_port: null
+  mqtt_server: "mqtt://core-mosquitto:1883"
+  mqtt_user: ""
+  mqtt_password: ""
+  log_level: "info"
+  wms_serial_port: "/dev/ttyUSB0"
+  wms_key: ""
+  wms_pan_id: "FFFF"
+  wms_channel: 17
+  ignored_devices: ""
+  force_devices: ""
 
 schema:
-  wms_key: str?
+  mqtt_server: str?
+  mqtt_user: str?
+  mqtt_password: password?
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?
+  wms_serial_port: device(subsystem=tty)
+  wms_key: password?
   wms_pan_id: str?
   wms_channel: int?
-  wms_serial_port: device(subsystem=tty)
   ignored_devices: str?
   force_devices: str?
 

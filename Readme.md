@@ -28,13 +28,18 @@ Bridge für Warema WMS Geräte mit MQTT-Unterstützung – kompatibel mit aktuel
 
 Passe die Optionen im Add-on an:
 
-| Option         | Beschreibung                        | Standardwert                    |
-|----------------|-------------------------------------|---------------------------------|
-| MQTT_SERVER    | Adresse des MQTT-Brokers            | mqtt://core-mosquitto:1883      |
-| MQTT_USER      | MQTT Benutzername                   | (leer)                          |
-| MQTT_PASSWORD  | MQTT Passwort                       | (leer)                          |
-| SERIAL_PORT    | Pfad zum USB-Stick                  | /dev/ttyUSB0                    |
-| LOG_LEVEL      | Log-Level                           | info                            |
+| Option           | Beschreibung                        | Standardwert                    |
+|------------------|-------------------------------------|---------------------------------|
+| mqtt_server      | Adresse des MQTT-Brokers            | mqtt://core-mosquitto:1883      |
+| mqtt_user        | MQTT Benutzername                   | (leer)                          |
+| mqtt_password    | MQTT Passwort                       | (leer)                          |
+| log_level        | Log-Level                           | info                            |
+| wms_serial_port  | Pfad zum USB-Stick                  | /dev/ttyUSB0                    |
+| wms_key          | WMS-Schlüssel                       | (leer)                          |
+| wms_pan_id       | WMS PAN ID                          | FFFF                            |
+| wms_channel      | WMS Kanal                           | 17                              |
+| ignored_devices  | Kommagetrennte Geräte-IDs ignorieren| (leer)                          |
+| force_devices    | Kommagetrennte Geräte-IDs erzwingen | (leer)                          |
 
 ## Entwicklung & Standalone-Nutzung
 
