@@ -15,7 +15,8 @@ describe('bridge.js', () => {
 
 
 beforeEach(() => {
-  jest.resetModules(); 
+  jest.resetModules();
+  process.removeAllListeners('SIGINT');
   process.env.IGNORED_DEVICES = '';
   process.env.FORCE_DEVICES = '';
   process.env.MQTT_SERVER = 'mqtt://localhost';
@@ -47,10 +48,12 @@ beforeEach(() => {
   registerDevice = bridge.registerDevice;
   registerDevices = bridge.registerDevices;
   callback = bridge.callback;
+  handlers.connect();
 });
 
   afterEach(() => {
     jest.clearAllMocks();
+    process.removeAllListeners('SIGINT');
   });
 
   test('registerDevice should publish config for known device', () => {
@@ -142,7 +145,6 @@ beforeEach(() => {
   });
 
   test('connect handler should subscribe and initialize stick', () => {
-    handlers.connect();
     expect(clientMock.subscribe).toHaveBeenCalledWith('warema/#');
     expect(clientMock.subscribe).toHaveBeenCalledWith('homeassistant/status');
     expect(require('warema-wms-venetian-blinds').WaremaWmsVenetianBlinds).toHaveBeenCalledWith(
@@ -155,7 +157,6 @@ beforeEach(() => {
   });
 
   test('message handler should control blinds', () => {
-    handlers.connect();
     callback(null, {
       topic: 'wms-vb-blind-position-update',
       payload: { snr: 12345, position: 20, angle: 30 }
@@ -173,7 +174,6 @@ beforeEach(() => {
   });
 
   test('message handler should rescan when homeassistant online', () => {
-    handlers.connect();
     handlers.message('homeassistant/status', Buffer.from('online'));
     expect(stickUsbMock.scanDevices).toHaveBeenCalledWith({ autoAssignBlinds: false });
   });
