@@ -13,43 +13,46 @@ jest.mock('warema-wms-venetian-blinds', () => ({
 describe('bridge.js', () => {
   let clientMock, stickUsbMock, bridge, registerDevice, registerDevices, callback, handlers;
 
+  const setupBridge = ({ ignoredDevices = '', forceDevices = '' } = {}) => {
+    jest.resetModules();
+    process.removeAllListeners('SIGINT');
+    process.env.IGNORED_DEVICES = ignoredDevices;
+    process.env.FORCE_DEVICES = forceDevices;
+    process.env.MQTT_SERVER = 'mqtt://localhost';
+    process.env.MQTT_USER = 'user';
+    process.env.MQTT_PASSWORD = 'password';
 
-beforeEach(() => {
-  jest.resetModules();
-  process.removeAllListeners('SIGINT');
-  process.env.IGNORED_DEVICES = '';
-  process.env.FORCE_DEVICES = '';
-  process.env.MQTT_SERVER = 'mqtt://localhost';
-  process.env.MQTT_USER = 'user';
-  process.env.MQTT_PASSWORD = 'password';
+    handlers = {};
+    clientMock = {
+      publish: jest.fn(),
+      subscribe: jest.fn(),
+      on: jest.fn((event, handler) => {
+        handlers[event] = handler;
+      }),
+      connect: jest.fn()
+    };
+    stickUsbMock = {
+      vnBlindAdd: jest.fn(),
+      scanDevices: jest.fn(),
+      setPosUpdInterval: jest.fn(),
+      vnBlindSetPosition: jest.fn(),
+      vnBlindStop: jest.fn(),
+      vnBlindsList: jest.fn()
+    };
 
-  handlers = {};
-  clientMock = {
-    publish: jest.fn(),
-    subscribe: jest.fn(),
-    on: jest.fn((event, handler) => {
-      handlers[event] = handler;
-    }),
-    connect: jest.fn()
+    require('mqtt').connect.mockReturnValue(clientMock);
+    require('warema-wms-venetian-blinds').WaremaWmsVenetianBlinds.mockImplementation(() => stickUsbMock);
+
+    bridge = require('../bridge.js');
+    registerDevice = bridge.registerDevice;
+    registerDevices = bridge.registerDevices;
+    callback = bridge.callback;
+    handlers.connect();
   };
-  stickUsbMock = {
-    vnBlindAdd: jest.fn(),
-    scanDevices: jest.fn(),
-    setPosUpdInterval: jest.fn(),
-    vnBlindSetPosition: jest.fn(),
-    vnBlindStop: jest.fn(),
-    vnBlindsList: jest.fn()
-  };
 
-  require('mqtt').connect.mockReturnValue(clientMock);
-  require('warema-wms-venetian-blinds').WaremaWmsVenetianBlinds.mockImplementation(() => stickUsbMock);
-
-  bridge = require('../bridge.js');
-  registerDevice = bridge.registerDevice;
-  registerDevices = bridge.registerDevices;
-  callback = bridge.callback;
-  handlers.connect();
-});
+  beforeEach(() => {
+    setupBridge();
+  });
 
   afterEach(() => {
     jest.clearAllMocks();
@@ -67,14 +70,14 @@ beforeEach(() => {
   });
 
   test('registerDevice should ignore device in ignoredDevices', () => {
-    process.env.IGNORED_DEVICES = '12345';
+    setupBridge({ ignoredDevices: '12345' });
     const element = { snr: 12345, type: 25 };
     registerDevice(element);
-    expect(clientMock.publish).not.toHaveBeenCalledWith(
+    expect(stickUsbMock.vnBlindAdd).not.toHaveBeenCalled();
+    expect(clientMock.publish).toHaveBeenCalledWith(
       'homeassistant/cover/12345/12345/config',
       expect.any(String)
     );
-    process.env.IGNORED_DEVICES = '';
   });
 
   test('registerDevices should scan devices if forceDevices is empty', () => {
@@ -84,7 +87,7 @@ beforeEach(() => {
   });
 
   test('registerDevices should register forced devices', () => {
-    process.env.FORCE_DEVICES = '111,222';
+    setupBridge({ forceDevices: '111,222' });
     registerDevices();
     expect(clientMock.publish).toHaveBeenCalledWith(
       'homeassistant/cover/111/111/config',
