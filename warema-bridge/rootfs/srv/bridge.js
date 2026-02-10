@@ -20,6 +20,8 @@ const DEVICE_TYPES = {
 };
 
 const POSITION_UPDATE_INTERVAL_MS = 30000;
+const DEFAULT_WMS_KEY = '00112233445566778899AABBCCDDEEFF';
+const MQTT_PAYLOAD_LIMIT = 1024;
 
 const LOG_LEVELS = {
   trace: 10,
@@ -64,10 +66,46 @@ const forceDevices = (process.env.FORCE_DEVICES || '')
   .map((value) => value.trim())
   .filter(Boolean);
 
+const sanitizeWmsKey = (rawKey) => {
+  const normalizedKey = (rawKey || DEFAULT_WMS_KEY).trim().toUpperCase();
+  const isValid = /^[0-9A-F]{32}$/.test(normalizedKey);
+
+  if (!isValid) {
+    log('warning', 'WMS key has invalid format. Falling back to default key.');
+    return DEFAULT_WMS_KEY;
+  }
+
+  if (normalizedKey === DEFAULT_WMS_KEY) {
+    log('warning', 'Using default WMS key. Configure wms_key to harden your setup.');
+  }
+
+  return normalizedKey;
+};
+
+const sanitizeWmsChannel = (rawChannel) => {
+  const parsedChannel = Number.parseInt(rawChannel, 10);
+  if (Number.isNaN(parsedChannel) || parsedChannel < 0 || parsedChannel > 26) {
+    log('warning', `Invalid WMS channel "${rawChannel}". Falling back to channel 17.`);
+    return 17;
+  }
+
+  return parsedChannel;
+};
+
+const sanitizeWmsPanid = (rawPanid) => {
+  const normalizedPanid = (rawPanid || 'FFFF').trim().toUpperCase();
+  if (!/^[0-9A-F]{4}$/.test(normalizedPanid)) {
+    log('warning', `Invalid WMS PAN ID "${rawPanid}". Falling back to FFFF.`);
+    return 'FFFF';
+  }
+
+  return normalizedPanid;
+};
+
 const settingsPar = {
-  wmsChannel: Number(process.env.WMS_CHANNEL || 17),
-  wmsKey: process.env.WMS_KEY || '00112233445566778899AABBCCDDEEFF',
-  wmsPanid: process.env.WMS_PAN_ID || 'FFFF',
+  wmsChannel: sanitizeWmsChannel(process.env.WMS_CHANNEL || '17'),
+  wmsKey: sanitizeWmsKey(process.env.WMS_KEY),
+  wmsPanid: sanitizeWmsPanid(process.env.WMS_PAN_ID),
   wmsSerialPort: process.env.WMS_SERIAL_PORT || '/dev/ttyUSB0',
 };
 
@@ -239,6 +277,16 @@ const handleWeatherBroadcast = (weather) => {
 };
 
 const handleBlindPositionUpdate = (payload) => {
+  if (!payload || typeof payload.snr === 'undefined') {
+    log('warning', 'Ignoring blind update without serial number');
+    return;
+  }
+
+  if (!Number.isFinite(payload.position) || !Number.isFinite(payload.angle)) {
+    log('warning', `Ignoring blind update with invalid values for ${payload.snr}`);
+    return;
+  }
+
   const serialNumber = payload.snr.toString();
   client.publish(`warema/${serialNumber}/position`, payload.position.toString());
   client.publish(`warema/${serialNumber}/tilt`, payload.angle.toString());
@@ -265,14 +313,18 @@ function callback(err, msg) {
       stickUsb.setPosUpdInterval(POSITION_UPDATE_INTERVAL_MS);
       break;
     case 'wms-vb-rcv-weather-broadcast':
-      handleWeatherBroadcast(msg.payload.weather);
+      if (msg.payload?.weather) {
+        handleWeatherBroadcast(msg.payload.weather);
+      }
       break;
     case 'wms-vb-blind-position-update':
       handleBlindPositionUpdate(msg.payload);
       break;
     case 'wms-vb-scanned-devices':
       log('info', 'Scanned devices.');
-      msg.payload.devices.forEach((element) => registerDevice(element));
+      if (Array.isArray(msg.payload?.devices)) {
+        msg.payload.devices.forEach((element) => registerDevice(element));
+      }
       log('debug', 'Registered blind list', stickUsb.vnBlindsList());
       break;
     default:
@@ -283,6 +335,8 @@ function callback(err, msg) {
 const client = mqtt.connect(process.env.MQTT_SERVER, {
   username: process.env.MQTT_USER,
   password: process.env.MQTT_PASSWORD,
+  reconnectPeriod: 5000,
+  connectTimeout: 30_000,
   will: {
     topic: MQTT_TOPICS.bridgeState,
     payload: 'offline',
@@ -305,10 +359,29 @@ const handleSetCommand = (deviceId, command) => {
   }
 };
 
+const parseNumericPayload = (value, min, max) => {
+  const parsedValue = Number.parseInt(value, 10);
+  if (Number.isNaN(parsedValue) || parsedValue < min || parsedValue > max) {
+    return null;
+  }
+
+  return parsedValue;
+};
+
 const handleWaremaMessage = (topic, message) => {
   const [, serialNumber, command] = topic.split('/');
   const deviceId = Number(serialNumber);
-  const stringMessage = message.toString();
+  if (!Number.isInteger(deviceId)) {
+    log('warning', `Ignoring command for invalid serial number in topic "${topic}"`);
+    return;
+  }
+
+  const stringMessage = message.toString().trim().toUpperCase();
+
+  if (stringMessage.length > MQTT_PAYLOAD_LIMIT) {
+    log('warning', `Ignoring oversized MQTT payload (${stringMessage.length} bytes) on ${topic}`);
+    return;
+  }
 
   switch (command) {
     case 'set':
@@ -316,15 +389,21 @@ const handleWaremaMessage = (topic, message) => {
       break;
     case 'set_position': {
       const currentAngle = resolveCurrentAngle(serialNumber);
-      if (currentAngle !== undefined) {
-        stickUsb.vnBlindSetPosition(deviceId, Number.parseInt(stringMessage, 10), Number.parseInt(currentAngle, 10));
+      const requestedPosition = parseNumericPayload(stringMessage, 0, 100);
+      if (currentAngle !== undefined && requestedPosition !== null) {
+        stickUsb.vnBlindSetPosition(deviceId, requestedPosition, Number.parseInt(currentAngle, 10));
+      } else if (requestedPosition === null) {
+        log('warning', `Ignoring invalid position payload for ${serialNumber}: ${stringMessage}`);
       }
       break;
     }
     case 'set_tilt': {
       const currentPosition = resolveCurrentPosition(serialNumber);
-      if (currentPosition !== undefined) {
-        stickUsb.vnBlindSetPosition(deviceId, Number.parseInt(currentPosition, 10), Number.parseInt(stringMessage, 10));
+      const requestedAngle = parseNumericPayload(stringMessage, -100, 100);
+      if (currentPosition !== undefined && requestedAngle !== null) {
+        stickUsb.vnBlindSetPosition(deviceId, Number.parseInt(currentPosition, 10), requestedAngle);
+      } else if (requestedAngle === null) {
+        log('warning', `Ignoring invalid tilt payload for ${serialNumber}: ${stringMessage}`);
       }
       break;
     }
