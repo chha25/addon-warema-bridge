@@ -7,7 +7,7 @@ FROM ${BUILD_FROM}
 RUN \
     apk add --no-cache --virtual .build-deps python3 make g++ linux-headers
 RUN \
-    apk add --no-cache npm
+    apk add --no-cache 'nodejs<21' npm
 
 # Copy root filesystem
 COPY warema-bridge/rootfs/srv/package-lock.json /srv

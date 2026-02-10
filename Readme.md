@@ -1,6 +1,6 @@
 # Warema WMS Bridge Add-on
 
-Bridge für Warema WMS Geräte mit MQTT-Unterstützung – kompatibel mit aktuellen Home Assistant Add-on Standards und Node.js 22.
+Bridge für Warema WMS Geräte mit MQTT-Unterstützung – kompatibel mit aktuellen Home Assistant Add-on Standards und Node.js 20 (LTS).
 
 ## Features
 
@@ -45,7 +45,7 @@ Passe die Optionen im Add-on an:
 
 ### Docker (Standalone)
 
-Du kannst das Projekt auch eigenständig mit Docker und Node.js 22 ausführen:
+Du kannst das Projekt auch eigenständig mit Docker und Node.js 20 (LTS) ausführen:
 
 ```sh
 docker build -f Dockerfile.standalone -t warema-bridge .
@@ -54,7 +54,7 @@ docker run --rm -it --device=/dev/ttyUSB0 warema-bridge
 
 ### Lokale Entwicklung
 
-1. Node.js 22 installieren
+1. Node.js 20 (LTS) installieren
 2. Im Verzeichnis `warema-bridge/rootfs/srv`:
    ```sh
    npm install
