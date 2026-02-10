@@ -4,7 +4,7 @@ FROM $BUILD_FROM
 
 # Install requirements for add-on
 RUN apk add --no-cache \
-    'nodejs<21' \
+    nodejs \
     npm \
     python3 \
     make \
