@@ -1,7 +1,3 @@
-const sinon = require('sinon');
-const mqtt = require('mqtt');
-const { WaremaWmsVenetianBlinds } = require('warema-wms-venetian-blinds');
-
 // Mocked dependencies
 jest.mock('mqtt', () => ({
   connect: jest.fn()
@@ -13,7 +9,7 @@ jest.mock('warema-wms-venetian-blinds', () => ({
 describe('bridge.js', () => {
   let clientMock, stickUsbMock, bridge, registerDevice, registerDevices, callback, handlers;
 
-  const setupBridge = ({ ignoredDevices = '', forceDevices = '' } = {}) => {
+  const setupBridge = ({ ignoredDevices = '', forceDevices = '', wmsChannel = '17', wmsPanId = 'FFFF', wmsKey = '' } = {}) => {
     jest.resetModules();
     process.removeAllListeners('SIGINT');
     process.env.IGNORED_DEVICES = ignoredDevices;
@@ -21,6 +17,9 @@ describe('bridge.js', () => {
     process.env.MQTT_SERVER = 'mqtt://localhost';
     process.env.MQTT_USER = 'user';
     process.env.MQTT_PASSWORD = 'password';
+    process.env.WMS_CHANNEL = wmsChannel;
+    process.env.WMS_PAN_ID = wmsPanId;
+    process.env.WMS_KEY = wmsKey;
 
     handlers = {};
     clientMock = {
@@ -179,5 +178,36 @@ describe('bridge.js', () => {
   test('message handler should rescan when homeassistant online', () => {
     handlers.message('homeassistant/status', Buffer.from('online'));
     expect(stickUsbMock.scanDevices).toHaveBeenCalledWith({ autoAssignBlinds: false });
+  });
+
+
+  test('message handler should ignore out-of-range numeric payloads', () => {
+    callback(null, {
+      topic: 'wms-vb-blind-position-update',
+      payload: { snr: 12345, position: 20, angle: 30 }
+    });
+
+    handlers.message('warema/12345/set_position', Buffer.from('200'));
+    handlers.message('warema/12345/set_tilt', Buffer.from('-101'));
+
+    expect(stickUsbMock.vnBlindSetPosition).not.toHaveBeenCalledWith(12345, 200, 30);
+    expect(stickUsbMock.vnBlindSetPosition).not.toHaveBeenCalledWith(12345, 20, -101);
+  });
+
+  test('message handler should ignore invalid serial topic', () => {
+    handlers.message('warema/not-a-number/set', Buffer.from('OPEN'));
+    expect(stickUsbMock.vnBlindSetPosition).not.toHaveBeenCalled();
+    expect(stickUsbMock.vnBlindStop).not.toHaveBeenCalled();
+  });
+
+  test('connect handler should sanitize invalid WMS settings', () => {
+    setupBridge({ wmsChannel: '99', wmsPanId: 'bad-pan', wmsKey: 'bad-key' });
+    expect(require('warema-wms-venetian-blinds').WaremaWmsVenetianBlinds).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 17,
+        panid: 'FFFF',
+        key: '00112233445566778899AABBCCDDEEFF'
+      })
+    );
   });
 });
