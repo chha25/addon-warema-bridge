@@ -1,5 +1,9 @@
-const { WaremaWmsVenetianBlinds } = require('warema-wms-venetian-blinds');
+const waremaModule = require('warema-wms-venetian-blinds');
 const mqtt = require('mqtt');
+
+const WaremaWmsVenetianBlinds = waremaModule.WaremaWmsVenetianBlinds
+  || waremaModule.default
+  || waremaModule;
 
 process.on('SIGINT', () => {
   process.exit(0);

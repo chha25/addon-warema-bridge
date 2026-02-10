@@ -1,0 +1,29 @@
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: mqtt
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  warema-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.standalone
+    container_name: warema-bridge
+    depends_on:
+      - mqtt
+    environment:
+      MQTT_SERVER: mqtt://mqtt:1883
+      LOG_LEVEL: info
+      WMS_SERIAL_PORT: /dev/ttyUSB0
+      WMS_KEY: 00112233445566778899AABBCCDDEEFF
+      WMS_PAN_ID: FFFF
+      WMS_CHANNEL: "17"
+      IGNORED_DEVICES: ""
+      FORCE_DEVICES: ""
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    restart: unless-stopped

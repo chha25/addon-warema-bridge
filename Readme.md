@@ -60,6 +60,22 @@ docker build -f Dockerfile.standalone -t warema-bridge .
 docker run --rm -it --device=/dev/ttyUSB0 warema-bridge
 ```
 
+### Docker Compose (lokaler Test mit USB-Dongle)
+
+Für einen lokalen Test mit MQTT + Bridge liegt eine fertige `docker-compose.yml` und eine passende `mosquitto.conf` im Repository.
+
+```sh
+docker compose up -d --build
+docker compose logs -f warema-bridge
+```
+
+Hinweise:
+
+- Der Fehler `not a directory` beim Mount von `mosquitto.conf` tritt auf, wenn die Datei auf dem Host nicht existiert oder der Pfad auf ein Verzeichnis zeigt.
+- Stelle sicher, dass die Datei `./mosquitto.conf` im Projektordner vorhanden ist (wird mitgeliefert).
+- Falls dein Stick nicht unter `/dev/ttyUSB0` verfügbar ist, passe in `docker-compose.yml` sowohl `devices` als auch `WMS_SERIAL_PORT` an (z.B. `/dev/ttyACM0`).
+- Wenn du zuvor ein altes Image mit Node.js 22 gebaut hast und `WaremaWmsVenetianBlinds is not a constructor` siehst, neu bauen: `docker compose build --no-cache warema-bridge && docker compose up -d`.
+
 ### Lokale Entwicklung
 
 1. Node.js 20 (LTS) installieren
