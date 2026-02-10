@@ -421,13 +421,14 @@ client.on('connect', () => {
   client.subscribe(MQTT_TOPICS.waremaWildcard);
   client.subscribe(MQTT_TOPICS.homeAssistantStatus);
 
-  stickUsb = new WaremaWmsVenetianBlinds({
+  const stickConfig = {
     serialPort: settingsPar.wmsSerialPort,
     channel: settingsPar.wmsChannel,
     panid: settingsPar.wmsPanid,
     key: settingsPar.wmsKey,
-    callback,
-  });
+  };
+
+  stickUsb = new WaremaWmsVenetianBlinds(stickConfig, callback);
 });
 
 client.on('error', (error) => {
