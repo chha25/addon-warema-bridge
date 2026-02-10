@@ -1,5 +1,9 @@
-const { WaremaWmsVenetianBlinds } = require('warema-wms-venetian-blinds');
+const waremaModule = require('warema-wms-venetian-blinds');
 const mqtt = require('mqtt');
+
+const WaremaWmsVenetianBlinds = waremaModule.WaremaWmsVenetianBlinds
+  || waremaModule.default
+  || waremaModule;
 
 process.on('SIGINT', () => {
   process.exit(0);
@@ -417,13 +421,14 @@ client.on('connect', () => {
   client.subscribe(MQTT_TOPICS.waremaWildcard);
   client.subscribe(MQTT_TOPICS.homeAssistantStatus);
 
-  stickUsb = new WaremaWmsVenetianBlinds({
-    serialPort: settingsPar.wmsSerialPort,
-    channel: settingsPar.wmsChannel,
-    panid: settingsPar.wmsPanid,
-    key: settingsPar.wmsKey,
+  stickUsb = new WaremaWmsVenetianBlinds(
+    settingsPar.wmsSerialPort,
+    settingsPar.wmsChannel,
+    settingsPar.wmsPanid,
+    settingsPar.wmsKey,
+    {},
     callback,
-  });
+  );
 });
 
 client.on('error', (error) => {

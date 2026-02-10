@@ -150,11 +150,12 @@ describe('bridge.js', () => {
     expect(clientMock.subscribe).toHaveBeenCalledWith('warema/#');
     expect(clientMock.subscribe).toHaveBeenCalledWith('homeassistant/status');
     expect(require('warema-wms-venetian-blinds').WaremaWmsVenetianBlinds).toHaveBeenCalledWith(
-      expect.objectContaining({
-        serialPort: '/dev/ttyUSB0',
-        channel: 17,
-        panid: 'FFFF'
-      })
+      '/dev/ttyUSB0',
+      17,
+      'FFFF',
+      expect.any(String),
+      expect.any(Object),
+      expect.any(Function)
     );
   });
 
@@ -203,11 +204,12 @@ describe('bridge.js', () => {
   test('connect handler should sanitize invalid WMS settings', () => {
     setupBridge({ wmsChannel: '99', wmsPanId: 'bad-pan', wmsKey: 'bad-key' });
     expect(require('warema-wms-venetian-blinds').WaremaWmsVenetianBlinds).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: 17,
-        panid: 'FFFF',
-        key: '00112233445566778899AABBCCDDEEFF'
-      })
+      '/dev/ttyUSB0',
+      17,
+      'FFFF',
+      '00112233445566778899AABBCCDDEEFF',
+      expect.any(Object),
+      expect.any(Function)
     );
   });
 });
