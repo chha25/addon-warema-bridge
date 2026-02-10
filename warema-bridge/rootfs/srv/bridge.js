@@ -21,6 +21,39 @@ const DEVICE_TYPES = {
 
 const POSITION_UPDATE_INTERVAL_MS = 30000;
 
+const LOG_LEVELS = {
+  trace: 10,
+  debug: 20,
+  info: 30,
+  notice: 40,
+  warning: 50,
+  error: 60,
+  fatal: 70,
+};
+
+const resolveLogLevel = (rawLevel) => {
+  const level = (rawLevel || 'info').toLowerCase();
+  return LOG_LEVELS[level] ? level : 'info';
+};
+
+const activeLogLevel = resolveLogLevel(process.env.LOG_LEVEL);
+const activeLogPriority = LOG_LEVELS[activeLogLevel];
+
+const log = (level, message, ...args) => {
+  if (LOG_LEVELS[level] < activeLogPriority) {
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+  const payload = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+  if (level === 'error' || level === 'fatal') {
+    console.error(payload, ...args);
+    return;
+  }
+
+  console.log(payload, ...args);
+};
+
 const ignoredDevices = (process.env.IGNORED_DEVICES || '')
   .split(',')
   .map((value) => value.trim())
@@ -109,7 +142,7 @@ const getPayloadByDeviceType = (serialNumber, type) => {
     case DEVICE_TYPES.VERTICAL_AWNING:
       return { payload: createShadingPayload(serialNumber, 'Vertical awning', false) };
     default:
-      console.log(`Unrecognized device type: ${type}`);
+      log('warning', `Unrecognized device type: ${type}`);
       return null;
   }
 };
@@ -124,7 +157,7 @@ function registerDevice(element) {
   const serialNumber = element.snr.toString();
   const configTopic = buildCoverConfigTopic(serialNumber);
 
-  console.log(`Registering ${serialNumber}`);
+  log('debug', `Registering ${serialNumber}`);
 
   const deviceConfig = getPayloadByDeviceType(serialNumber, element.type);
   if (!deviceConfig) {
@@ -132,9 +165,9 @@ function registerDevice(element) {
   }
 
   if (ignoredDevices.includes(serialNumber)) {
-    console.log(`Ignoring and removing device ${serialNumber} (type ${element.type})`);
+    log('info', `Ignoring and removing device ${serialNumber} (type ${element.type})`);
   } else {
-    console.log(`Adding device ${serialNumber} (type ${element.type})`);
+    log('info', `Adding device ${serialNumber} (type ${element.type})`);
     registerShade(serialNumber);
   }
 
@@ -149,7 +182,7 @@ function registerDevices() {
     return;
   }
 
-  console.log('Scanning...');
+  log('info', 'Scanning...');
   stickUsb.scanDevices({ autoAssignBlinds: false });
 }
 
@@ -218,7 +251,7 @@ const handleBlindPositionUpdate = (payload) => {
 
 function callback(err, msg) {
   if (err) {
-    console.log(`ERROR: ${err}`);
+    log('error', `WMS callback error: ${err}`);
   }
 
   if (!msg) {
@@ -227,7 +260,7 @@ function callback(err, msg) {
 
   switch (msg.topic) {
     case 'wms-vb-init-completion':
-      console.log('Warema init completed');
+      log('info', 'Warema init completed');
       registerDevices();
       stickUsb.setPosUpdInterval(POSITION_UPDATE_INTERVAL_MS);
       break;
@@ -238,12 +271,12 @@ function callback(err, msg) {
       handleBlindPositionUpdate(msg.payload);
       break;
     case 'wms-vb-scanned-devices':
-      console.log('Scanned devices.');
+      log('info', 'Scanned devices.');
       msg.payload.devices.forEach((element) => registerDevice(element));
-      console.log(stickUsb.vnBlindsList());
+      log('debug', 'Registered blind list', stickUsb.vnBlindsList());
       break;
     default:
-      console.log(`UNKNOWN MESSAGE: ${JSON.stringify(msg)}`);
+      log('warning', `UNKNOWN MESSAGE: ${JSON.stringify(msg)}`);
   }
 }
 
@@ -301,7 +334,7 @@ const handleWaremaMessage = (topic, message) => {
 };
 
 client.on('connect', () => {
-  console.log('Connected to MQTT');
+  log('info', `Connected to MQTT (log level: ${activeLogLevel})`);
   client.subscribe(MQTT_TOPICS.waremaWildcard);
   client.subscribe(MQTT_TOPICS.homeAssistantStatus);
 
@@ -315,7 +348,7 @@ client.on('connect', () => {
 });
 
 client.on('error', (error) => {
-  console.log(`MQTT Error: ${error.toString()}`);
+  log('error', `MQTT Error: ${error.toString()}`);
 });
 
 client.on('message', (topic, message) => {

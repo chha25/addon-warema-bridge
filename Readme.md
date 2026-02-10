@@ -41,6 +41,14 @@ Passe die Optionen im Add-on an:
 | ignored_devices  | Kommagetrennte Geräte-IDs ignorieren| (leer)                          |
 | force_devices    | Kommagetrennte Geräte-IDs erzwingen | (leer)                          |
 
+### Logging
+
+Das Add-on unterstützt konfigurierbares Logging über die Option `log_level`.
+
+Unterstützte Level: `trace`, `debug`, `info`, `notice`, `warning`, `error`, `fatal`
+
+Das Bridge-Logging wird einheitlich mit Zeitstempel und Level ausgegeben (z.B. `[2026-01-01T12:00:00.000Z] [INFO] Connected to MQTT`).
+
 ## Entwicklung & Standalone-Nutzung
 
 ### Docker (Standalone)
