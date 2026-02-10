@@ -153,8 +153,11 @@ describe('bridge.js', () => {
       expect.objectContaining({
         serialPort: '/dev/ttyUSB0',
         channel: 17,
-        panid: 'FFFF'
-      })
+        panid: 'FFFF',
+        callback: expect.any(Function),
+        cb: expect.any(Function)
+      }),
+      expect.any(Function)
     );
   });
 
@@ -206,8 +209,11 @@ describe('bridge.js', () => {
       expect.objectContaining({
         channel: 17,
         panid: 'FFFF',
-        key: '00112233445566778899AABBCCDDEEFF'
-      })
+        key: '00112233445566778899AABBCCDDEEFF',
+        callback: expect.any(Function),
+        cb: expect.any(Function)
+      }),
+      expect.any(Function)
     );
   });
 });
