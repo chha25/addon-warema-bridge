@@ -40,4 +40,4 @@ if [ ! -e "${SERIAL_PORT}" ] ; then
   done
 fi
 
-exec npm run start
+exec npm --prefix /srv run start
