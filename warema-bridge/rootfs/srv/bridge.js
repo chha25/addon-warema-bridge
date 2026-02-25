@@ -114,7 +114,38 @@ const settingsPar = {
 };
 
 const registeredShades = new Set();
+const registeredBlindsInLibrary = new Set();
 const shadePosition = {};
+
+const resetLocalRegistrationState = () => {
+  registeredShades.clear();
+  registeredBlindsInLibrary.clear();
+  Object.keys(shadePosition).forEach((serialNumber) => {
+    delete shadePosition[serialNumber];
+  });
+};
+
+const resetRegisteredBlindsInLibrary = () => {
+  if (!stickUsb || typeof stickUsb.vnBlindRemove !== 'function') {
+    return;
+  }
+
+  registeredBlindsInLibrary.forEach((serialNumber) => {
+    const deviceId = Number(serialNumber);
+    if (!Number.isInteger(deviceId)) {
+      return;
+    }
+
+    stickUsb.vnBlindRemove(deviceId);
+  });
+};
+
+const handleHomeAssistantOnline = () => {
+  log('info', 'Home Assistant is online. Resetting registrations and re-publishing discovery.');
+  resetRegisteredBlindsInLibrary();
+  resetLocalRegistrationState();
+  registerDevices();
+};
 
 const buildAvailabilityTopic = (serialNumber) => `warema/${serialNumber}/availability`;
 const buildCoverConfigTopic = (serialNumber) => `homeassistant/cover/${serialNumber}/${serialNumber}/config`;
@@ -192,6 +223,7 @@ const getPayloadByDeviceType = (serialNumber, type) => {
 const registerShade = (serialNumber) => {
   stickUsb.vnBlindAdd(Number(serialNumber), serialNumber);
   registeredShades.add(serialNumber);
+  registeredBlindsInLibrary.add(serialNumber);
   client.publish(buildAvailabilityTopic(serialNumber), 'online', { retain: true });
 };
 
@@ -213,7 +245,7 @@ function registerDevice(element) {
     registerShade(serialNumber);
   }
 
-  client.publish(configTopic, JSON.stringify(deviceConfig.payload));
+  client.publish(configTopic, JSON.stringify(deviceConfig.payload), { retain: true });
 }
 
 function registerDevices() {
@@ -252,6 +284,7 @@ const publishWeatherDiscovery = (weather) => {
       unique_id: `${serialNumber}_illuminance`,
       unit_of_measurement: 'lm',
     }),
+    { retain: true },
   );
 
   client.publish(
@@ -263,6 +296,7 @@ const publishWeatherDiscovery = (weather) => {
       unique_id: `${serialNumber}_temperature`,
       unit_of_measurement: 'C',
     }),
+    { retain: true },
   );
 
   client.publish(availabilityTopic, 'online', { retain: true });
@@ -373,6 +407,10 @@ const parseNumericPayload = (value, min, max) => {
 };
 
 const handleWaremaMessage = (topic, message) => {
+  if (topic === MQTT_TOPICS.bridgeState) {
+    return;
+  }
+
   const [, serialNumber, command] = topic.split('/');
   const deviceId = Number(serialNumber);
   if (!Number.isInteger(deviceId)) {
@@ -418,6 +456,7 @@ const handleWaremaMessage = (topic, message) => {
 
 client.on('connect', () => {
   log('info', `Connected to MQTT (log level: ${activeLogLevel})`);
+  client.publish(MQTT_TOPICS.bridgeState, 'online', { retain: true });
   client.subscribe(MQTT_TOPICS.waremaWildcard);
   client.subscribe(MQTT_TOPICS.homeAssistantStatus);
 
@@ -444,7 +483,7 @@ client.on('message', (topic, message) => {
   }
 
   if (scope === 'homeassistant' && subtopic === 'status' && message.toString() === 'online') {
-    registerDevices();
+    handleHomeAssistantOnline();
   }
 });
 

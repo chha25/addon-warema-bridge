@@ -8,6 +8,13 @@ Alle nennenswerten Änderungen an diesem Home Assistant Add-on werden in dieser 
 - Verbesserte Home Assistant Add-on Kompatibilität und aktualisierte Add-on Metadaten.
 - Stabilitäts- und Logging-Verbesserungen für den Betrieb mit MQTT und WMS-USB-Stick.
 
+## Unreleased
+
+- Fix #14: Doppelstart durch parallelen service.d-Start entfernt (run.sh wird nur noch einmal gestartet).
+- Fix #14: HA-Restart (`homeassistant/status=online`) setzt Registrierungen zurück, entfernt alte Blind-Registrierungen in der WMS-Library und publiziert Discovery erneut.
+- Fix #14: MQTT Discovery-Configs werden retained publiziert; Bridge-State wird bei Connect aktiv als retained `online` gesetzt.
+- Fix #14: `warema/bridge/state` wird nicht mehr als Gerätetopic interpretiert.
+
 ## 2.1.0
 
 - Überarbeitete Konfiguration für den Betrieb mit aktuellen Home Assistant Versionen.

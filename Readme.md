@@ -9,6 +9,7 @@ Diese Bridge bindet Warema-WMS-Geräte per MQTT in Home Assistant ein und ist mi
 - Bindet Warema-WMS-Jalousien, Wetterstationen und weitere Geräte in Home Assistant ein.
 - Kommunikation über MQTT (z. B. mit `core-mosquitto`).
 - Automatische Erkennung und Registrierung von Geräten.
+- Retained Discovery- und Availability-Topics für robustes Recovery nach Home-Assistant-Neustarts.
 - Unterstützung für mehrere Architekturen: `amd64`, `aarch64`, `armv7`, `armhf`.
 - Konfigurierbar über Home-Assistant-Add-on-Optionen.
 - Serielle Verbindung zu einem WMS-USB-Stick.
@@ -101,6 +102,7 @@ This bridge integrates Warema WMS devices into Home Assistant via MQTT and is co
 - Integrates Warema WMS blinds, weather stations, and other devices into Home Assistant.
 - MQTT communication (e.g. with `core-mosquitto`).
 - Automatic device discovery and registration.
+- Retained discovery and availability topics for robust Home Assistant restart recovery.
 - Multi-architecture support: `amd64`, `aarch64`, `armv7`, `armhf`.
 - Configurable through Home Assistant add-on options.
 - Serial connection to a WMS USB dongle.

@@ -1,8 +1,0 @@
-#!/usr/bin/with-contenv bashio
-# ==============================================================================
-# Home Assistant Community Add-on: Warema Bridge
-# S6 service entrypoint (legacy services.d)
-# ==============================================================================
-set -e
-
-exec /run.sh
