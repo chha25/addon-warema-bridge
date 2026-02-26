@@ -91,7 +91,7 @@ node bridge.js
 - `Dockerfile.standalone` – Dockerfile für Standalone-Betrieb
 - `warema-bridge/rootfs/srv/bridge.js` – Hauptlogik der Bridge
 - `warema-bridge/rootfs/srv/package.json` – Node.js-Abhängigkeiten
-- `run.sh` – Startskript für das Add-on
+- `warema-bridge/rootfs/etc/services.d/warema-bridge/run` – Startskript des Add-on-Services (über `/init`)
 
 ## English
 
@@ -184,7 +184,7 @@ node bridge.js
 - `Dockerfile.standalone` – Dockerfile for standalone usage
 - `warema-bridge/rootfs/srv/bridge.js` – Main bridge logic
 - `warema-bridge/rootfs/srv/package.json` – Node.js dependencies
-- `run.sh` – Add-on startup script
+- `warema-bridge/rootfs/etc/services.d/warema-bridge/run` – Add-on service startup script (via `/init`)
 
 ## Danksagung / Acknowledgement and origin
 

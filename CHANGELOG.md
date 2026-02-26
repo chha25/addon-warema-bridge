@@ -2,6 +2,11 @@
 
 Alle nennenswerten Änderungen an diesem Home Assistant Add-on werden in dieser Datei dokumentiert.
 
+## 2.1.2
+
+- Fix #14: Doppelstart beseitigt und Start auf Home-Assistant-Standard (`/init` + `services.d`) umgestellt.
+- Fix #14: HA-Restart-Recovery und MQTT-Topic-Handling für `warema/bridge/state` verbessert.
+
 ## 2.1.1
 
 - Aktualisierung auf Node.js 20 (LTS) als Laufzeitbasis.
