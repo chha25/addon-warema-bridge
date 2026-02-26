@@ -2,6 +2,10 @@
 
 Alle nennenswerten Änderungen an diesem Home Assistant Add-on werden in dieser Datei dokumentiert.
 
+## 2.1.3
+
+- Fix: Entferntes `CMD ["/init"]` im Add-on-Dockerfile, damit `/init` nicht als Unterprozess gestartet wird (Fehler `s6-overlay-suexec: fatal: can only run as pid 1`).
+
 ## 2.1.2
 
 - Fix #14: Doppelstart beseitigt und Start auf Home-Assistant-Standard (`/init` + `services.d`) umgestellt.
