@@ -11,7 +11,9 @@ process.on('SIGINT', () => {
 
 const MQTT_TOPICS = {
   bridgeState: 'warema/bridge/state',
-  waremaWildcard: 'warema/#',
+  waremaSetCommand: 'warema/+/set',
+  waremaSetPositionCommand: 'warema/+/set_position',
+  waremaSetTiltCommand: 'warema/+/set_tilt',
   homeAssistantStatus: 'homeassistant/status',
 };
 
@@ -457,7 +459,9 @@ const handleWaremaMessage = (topic, message) => {
 client.on('connect', () => {
   log('info', `Connected to MQTT (log level: ${activeLogLevel})`);
   client.publish(MQTT_TOPICS.bridgeState, 'online', { retain: true });
-  client.subscribe(MQTT_TOPICS.waremaWildcard);
+  client.subscribe(MQTT_TOPICS.waremaSetCommand);
+  client.subscribe(MQTT_TOPICS.waremaSetPositionCommand);
+  client.subscribe(MQTT_TOPICS.waremaSetTiltCommand);
   client.subscribe(MQTT_TOPICS.homeAssistantStatus);
 
   stickUsb = new WaremaWmsVenetianBlinds(

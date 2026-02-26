@@ -156,7 +156,9 @@ describe('bridge.js', () => {
 
   test('connect handler should subscribe and initialize stick', () => {
     expect(clientMock.publish).toHaveBeenCalledWith('warema/bridge/state', 'online', { retain: true });
-    expect(clientMock.subscribe).toHaveBeenCalledWith('warema/#');
+    expect(clientMock.subscribe).toHaveBeenCalledWith('warema/+/set');
+    expect(clientMock.subscribe).toHaveBeenCalledWith('warema/+/set_position');
+    expect(clientMock.subscribe).toHaveBeenCalledWith('warema/+/set_tilt');
     expect(clientMock.subscribe).toHaveBeenCalledWith('homeassistant/status');
     expect(require('warema-wms-venetian-blinds').WaremaWmsVenetianBlinds).toHaveBeenCalledWith(
       '/dev/ttyUSB0',

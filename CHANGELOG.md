@@ -14,6 +14,7 @@ Alle nennenswerten Änderungen an diesem Home Assistant Add-on werden in dieser 
 - Fix #14: HA-Restart (`homeassistant/status=online`) setzt Registrierungen zurück, entfernt alte Blind-Registrierungen in der WMS-Library und publiziert Discovery erneut.
 - Fix #14: MQTT Discovery-Configs werden retained publiziert; Bridge-State wird bei Connect aktiv als retained `online` gesetzt.
 - Fix #14: `warema/bridge/state` wird nicht mehr als Gerätetopic interpretiert.
+- Fix #14: MQTT-Command-Subscriptions auf `warema/+/set`, `warema/+/set_position`, `warema/+/set_tilt` eingegrenzt, damit Bridge-Statusmeldungen nicht als Gerätekommando verarbeitet werden.
 
 ## 2.1.0
 
