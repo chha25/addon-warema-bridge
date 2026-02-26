@@ -1,8 +1,9 @@
-#!/usr/bin/with-contenv bashio
+#!/usr/bin/execlineb -S0
 # ==============================================================================
 # Home Assistant Community Add-on: Warema Bridge
-# S6 service entrypoint (legacy services.d)
+# Take down the S6 supervision tree when the Warema bridge fails
 # ==============================================================================
-set -e
+if -n { s6-test $# -ne 0 }
+if -n { s6-test ${1} -eq 256 }
 
-exec /run.sh
+s6-svscanctl -t /var/run/s6/services

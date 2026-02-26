@@ -21,6 +21,8 @@ RUN npm ci --omit=dev
 
 COPY warema-bridge/rootfs/ /
 
-RUN chmod a+x /etc/services.d/warema-bridge/run
+# Copy data for add-on
+COPY run.sh /
+RUN chmod a+x /run.sh
 
-CMD ["/init"]
+CMD [ "/run.sh" ]

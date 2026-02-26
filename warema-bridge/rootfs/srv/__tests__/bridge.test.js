@@ -32,7 +32,6 @@ describe('bridge.js', () => {
     };
     stickUsbMock = {
       vnBlindAdd: jest.fn(),
-      vnBlindRemove: jest.fn(),
       scanDevices: jest.fn(),
       setPosUpdInterval: jest.fn(),
       vnBlindSetPosition: jest.fn(),
@@ -64,8 +63,7 @@ describe('bridge.js', () => {
     registerDevice(element);
     expect(clientMock.publish).toHaveBeenCalledWith(
       'homeassistant/cover/12345/12345/config',
-      expect.any(String),
-      { retain: true }
+      expect.any(String)
     );
     expect(stickUsbMock.vnBlindAdd).toHaveBeenCalledWith(12345, '12345');
   });
@@ -77,8 +75,7 @@ describe('bridge.js', () => {
     expect(stickUsbMock.vnBlindAdd).not.toHaveBeenCalled();
     expect(clientMock.publish).toHaveBeenCalledWith(
       'homeassistant/cover/12345/12345/config',
-      expect.any(String),
-      { retain: true }
+      expect.any(String)
     );
   });
 
@@ -93,13 +90,11 @@ describe('bridge.js', () => {
     registerDevices();
     expect(clientMock.publish).toHaveBeenCalledWith(
       'homeassistant/cover/111/111/config',
-      expect.any(String),
-      { retain: true }
+      expect.any(String)
     );
     expect(clientMock.publish).toHaveBeenCalledWith(
       'homeassistant/cover/222/222/config',
-      expect.any(String),
-      { retain: true }
+      expect.any(String)
     );
   });
 
@@ -124,13 +119,11 @@ describe('bridge.js', () => {
     callback(null, msg);
     expect(clientMock.publish).toHaveBeenCalledWith(
       'homeassistant/sensor/999/illuminance/config',
-      expect.any(String),
-      { retain: true }
+      expect.any(String)
     );
     expect(clientMock.publish).toHaveBeenCalledWith(
       'homeassistant/sensor/999/temperature/config',
-      expect.any(String),
-      { retain: true }
+      expect.any(String)
     );
     expect(clientMock.publish).toHaveBeenCalledWith('warema/999/availability', 'online', { retain: true });
   });
@@ -140,8 +133,7 @@ describe('bridge.js', () => {
     callback(null, msg);
     expect(clientMock.publish).toHaveBeenCalledWith(
       'homeassistant/cover/222/222/config',
-      expect.any(String),
-      { retain: true }
+      expect.any(String)
     );
     expect(stickUsbMock.vnBlindsList).toHaveBeenCalled();
   });
@@ -155,10 +147,7 @@ describe('bridge.js', () => {
   });
 
   test('connect handler should subscribe and initialize stick', () => {
-    expect(clientMock.publish).toHaveBeenCalledWith('warema/bridge/state', 'online', { retain: true });
-    expect(clientMock.subscribe).toHaveBeenCalledWith('warema/+/set');
-    expect(clientMock.subscribe).toHaveBeenCalledWith('warema/+/set_position');
-    expect(clientMock.subscribe).toHaveBeenCalledWith('warema/+/set_tilt');
+    expect(clientMock.subscribe).toHaveBeenCalledWith('warema/#');
     expect(clientMock.subscribe).toHaveBeenCalledWith('homeassistant/status');
     expect(require('warema-wms-venetian-blinds').WaremaWmsVenetianBlinds).toHaveBeenCalledWith(
       '/dev/ttyUSB0',
@@ -188,16 +177,8 @@ describe('bridge.js', () => {
   });
 
   test('message handler should rescan when homeassistant online', () => {
-    registerDevice({ snr: 12345, type: 25 });
     handlers.message('homeassistant/status', Buffer.from('online'));
-    expect(stickUsbMock.vnBlindRemove).toHaveBeenCalledWith(12345);
     expect(stickUsbMock.scanDevices).toHaveBeenCalledWith({ autoAssignBlinds: false });
-  });
-
-  test('message handler should ignore bridge state topic', () => {
-    handlers.message('warema/bridge/state', Buffer.from('offline'));
-    expect(stickUsbMock.vnBlindSetPosition).not.toHaveBeenCalled();
-    expect(stickUsbMock.vnBlindStop).not.toHaveBeenCalled();
   });
 
 

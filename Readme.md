@@ -9,7 +9,6 @@ Diese Bridge bindet Warema-WMS-Geräte per MQTT in Home Assistant ein und ist mi
 - Bindet Warema-WMS-Jalousien, Wetterstationen und weitere Geräte in Home Assistant ein.
 - Kommunikation über MQTT (z. B. mit `core-mosquitto`).
 - Automatische Erkennung und Registrierung von Geräten.
-- Retained Discovery- und Availability-Topics für robustes Recovery nach Home-Assistant-Neustarts.
 - Unterstützung für mehrere Architekturen: `amd64`, `aarch64`, `armv7`, `armhf`.
 - Konfigurierbar über Home-Assistant-Add-on-Optionen.
 - Serielle Verbindung zu einem WMS-USB-Stick.
@@ -91,7 +90,7 @@ node bridge.js
 - `Dockerfile.standalone` – Dockerfile für Standalone-Betrieb
 - `warema-bridge/rootfs/srv/bridge.js` – Hauptlogik der Bridge
 - `warema-bridge/rootfs/srv/package.json` – Node.js-Abhängigkeiten
-- `warema-bridge/rootfs/etc/services.d/warema-bridge/run` – Startskript des Add-on-Services (über `/init`)
+- `run.sh` – Startskript für das Add-on
 
 ## English
 
@@ -102,7 +101,6 @@ This bridge integrates Warema WMS devices into Home Assistant via MQTT and is co
 - Integrates Warema WMS blinds, weather stations, and other devices into Home Assistant.
 - MQTT communication (e.g. with `core-mosquitto`).
 - Automatic device discovery and registration.
-- Retained discovery and availability topics for robust Home Assistant restart recovery.
 - Multi-architecture support: `amd64`, `aarch64`, `armv7`, `armhf`.
 - Configurable through Home Assistant add-on options.
 - Serial connection to a WMS USB dongle.
@@ -184,7 +182,7 @@ node bridge.js
 - `Dockerfile.standalone` – Dockerfile for standalone usage
 - `warema-bridge/rootfs/srv/bridge.js` – Main bridge logic
 - `warema-bridge/rootfs/srv/package.json` – Node.js dependencies
-- `warema-bridge/rootfs/etc/services.d/warema-bridge/run` – Add-on service startup script (via `/init`)
+- `run.sh` – Add-on startup script
 
 ## Danksagung / Acknowledgement and origin
 
