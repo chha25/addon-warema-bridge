@@ -23,4 +23,3 @@ COPY warema-bridge/rootfs/ /
 
 RUN chmod a+x /etc/services.d/warema-bridge/run
 
-CMD ["/init"]
