@@ -2,7 +2,7 @@
 
 ## Deutsch
 
-Diese Bridge bindet Warema-WMS-Geräte per MQTT in Home Assistant ein und ist mit aktuellen Home-Assistant-Add-on-Standards sowie Node.js 24 (LTS) kompatibel.
+Diese Bridge bindet Warema-WMS-Geräte per MQTT in Home Assistant ein und ist mit aktuellen Home-Assistant-Add-on-Standards sowie Node.js 22/24 (LTS, empfohlen: 24.x) kompatibel.
 
 ### Funktionen
 
@@ -77,7 +77,7 @@ Hinweise:
 
 #### Lokale Entwicklung
 
-1. Node.js 24 (LTS, empfohlen: aktuellste 24.x) installieren (`>=24.0.0 <25`).
+1. Node.js 22 oder 24 LTS installieren (empfohlen: aktuellste 24.x) (`^22 || ^24`).
 2. In das Verzeichnis `warema-bridge/rootfs/srv` wechseln:
 
 ```sh
@@ -95,7 +95,7 @@ node bridge.js
 
 ## English
 
-This bridge integrates Warema WMS devices into Home Assistant via MQTT and is compatible with current Home Assistant add-on standards and Node.js 24 (LTS).
+This bridge integrates Warema WMS devices into Home Assistant via MQTT and is compatible with current Home Assistant add-on standards and Node.js 22/24 LTS (24.x recommended).
 
 ### Features
 
@@ -170,7 +170,7 @@ Notes:
 
 #### Local development
 
-1. Install Node.js 24 LTS (recommended: latest 24.x) (`>=24.0.0 <25`).
+1. Install Node.js 22 or 24 LTS (recommended: latest 24.x) (`^22 || ^24`).
 2. Switch to `warema-bridge/rootfs/srv`:
 
 ```sh
