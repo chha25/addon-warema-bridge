@@ -1,0 +1,57 @@
+name: Release
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate tag and synced versions
+        id: validate
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+
+          CONFIG_VERSION=$(sed -n 's/^version: "\([^"]\+\)"/\1/p' config.yaml)
+          REPO_VERSION=$(node -p "require('./repository.json').version")
+
+          if [ "$VERSION" != "$CONFIG_VERSION" ]; then
+            echo "Tag version ($VERSION) != config.yaml version ($CONFIG_VERSION)" >&2
+            exit 1
+          fi
+
+          if [ "$VERSION" != "$REPO_VERSION" ]; then
+            echo "Tag version ($VERSION) != repository.json version ($REPO_VERSION)" >&2
+            exit 1
+          fi
+
+          CHANGELOG_SECTION=$(./.github/scripts/get_changelog_section.sh "$VERSION")
+          if [ -z "${CHANGELOG_SECTION// /}" ]; then
+            echo "No CHANGELOG section found for $VERSION" >&2
+            exit 1
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "body<<EOF"
+            echo "$CHANGELOG_SECTION"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ steps.validate.outputs.version }}
+          body: ${{ steps.validate.outputs.body }}
+          draft: false
+          prerelease: false

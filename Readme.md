@@ -93,6 +93,19 @@ node bridge.js
 - `warema-bridge/rootfs/srv/package.json` – Node.js-Abhängigkeiten
 - `warema-bridge/rootfs/etc/services.d/warema-bridge/run` – Startskript des Add-on-Services (über `/init`)
 
+### Release-Prozess (Tags)
+
+1. Version in `config.yaml`, `repository.json` und `CHANGELOG.md` aktualisieren.
+2. Änderungen nach `main` mergen (Tests müssen grün sein).
+3. Tag erstellen und pushen:
+
+```sh
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+Der Workflow `.github/workflows/release.yml` validiert die Versionskonsistenz und erstellt automatisch ein GitHub-Release aus dem passenden Changelog-Abschnitt.
+
 ## English
 
 This bridge integrates Warema WMS devices into Home Assistant via MQTT and is compatible with current Home Assistant add-on standards and Node.js 22/24 LTS (24.x recommended).
@@ -185,6 +198,19 @@ node bridge.js
 - `warema-bridge/rootfs/srv/bridge.js` – Main bridge logic
 - `warema-bridge/rootfs/srv/package.json` – Node.js dependencies
 - `warema-bridge/rootfs/etc/services.d/warema-bridge/run` – Add-on service startup script (via `/init`)
+
+### Release process (tags)
+
+1. Update the version in `config.yaml`, `repository.json`, and `CHANGELOG.md`.
+2. Merge to `main` (CI must be green).
+3. Create and push a tag:
+
+```sh
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+The `.github/workflows/release.yml` workflow validates version consistency and automatically creates a GitHub release from the matching changelog section.
 
 ## Danksagung / Acknowledgement and origin
 
