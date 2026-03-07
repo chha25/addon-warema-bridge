@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Native build tooling for serial dependencies
 RUN apk add --no-cache --virtual .build-deps python3 make g++ linux-headers
