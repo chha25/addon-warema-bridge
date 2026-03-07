@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Home Assistant Add-on werden in dieser Datei dokumentiert.
 
+## 2.1.4
+
+- Wartung: Node.js-LTS-Ausrichtung auf aktuell unterstützte LTS-Linien (22/24, 24 empfohlen) inkl. CI-Matrix.
+- Wartung: Tooling-/Dokumentations-Updates (engines, `.nvmrc`, Standalone-Image, README).
+- Keine Änderungen an der Bridge-Laufzeitlogik.
+
 ## 2.1.3
 
 - Fix: Entferntes `CMD ["/init"]` im Add-on-Dockerfile, damit `/init` nicht als Unterprozess gestartet wird (Fehler `s6-overlay-suexec: fatal: can only run as pid 1`).
