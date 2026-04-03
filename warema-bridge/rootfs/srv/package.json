@@ -4,7 +4,7 @@
     "warema-wms-venetian-blinds": "^2.0.5"
   },
   "devDependencies": {
-    "jest": "^30.0.5",
+    "jest": "^30.2.0",
     "sinon": "^21.0.0"
   },
   "scripts": {
