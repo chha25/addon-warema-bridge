@@ -17,14 +17,14 @@ on:
 permissions:
   contents: read
   issues: write
+  models: read
 
 jobs:
   detect-breaking-changes:
     runs-on: ubuntu-latest
-    environment: OpenAi
     env:
       RELEASE_NOTES_INDEX: https://www.home-assistant.io/blog/categories/release-notes/
-      OPENAI_MODEL: gpt-5
+      GITHUB_MODELS_MODEL: openai/gpt-4.1-mini
       MIN_RISK_SCORE: "0.45"
       OUTPUT_MODE: console
     steps:
@@ -105,10 +105,10 @@ jobs:
           }))
           PY
 
-      - name: Analyze release notes with OpenAI and publish results
+      - name: Analyze release notes with GitHub Models and publish results
         uses: actions/github-script@v7
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
           INPUT_OUTPUT_MODE: ${{ inputs.output_mode }}
         with:
           script: |
@@ -117,12 +117,13 @@ jobs:
             const repo = context.repo.repo;
             const repoFullName = `${owner}/${repo}`;
             const minRiskScore = Number(process.env.MIN_RISK_SCORE || '0.45');
-            const openaiApiKey = process.env.OPENAI_API_KEY;
+            const githubToken = process.env.GITHUB_TOKEN;
             const requestedOutputMode = (process.env.INPUT_OUTPUT_MODE || process.env.OUTPUT_MODE || 'console').trim().toLowerCase();
             const outputMode = ['console', 'issue'].includes(requestedOutputMode) ? requestedOutputMode : 'console';
+            const githubModelsModel = process.env.GITHUB_MODELS_MODEL || 'openai/gpt-4.1-mini';
 
-            if (!openaiApiKey) {
-              core.setFailed('Missing repository or environment secret OPENAI_API_KEY. Add it under Settings > Environments > OpenAi > Secrets or repository Actions secrets.');
+            if (!githubToken) {
+              core.setFailed('Missing GITHUB_TOKEN for GitHub Models inference.');
               return;
             }
 
@@ -190,6 +191,19 @@ jobs:
               return unique(snippets);
             };
 
+            const parseModelText = (payload) => {
+              if (typeof payload?.choices?.[0]?.message?.content === 'string') {
+                return payload.choices[0].message.content.trim();
+              }
+              if (Array.isArray(payload?.choices?.[0]?.message?.content)) {
+                return payload.choices[0].message.content
+                  .map((item) => item?.text || item?.content || '')
+                  .join('')
+                  .trim();
+              }
+              return '';
+            };
+
             const parseJsonResponse = (text) => {
               const trimmed = text.trim();
               try {
@@ -211,7 +225,7 @@ jobs:
               text = text.replace(/^::/gm, '∷');
               text = text.replace(/<<\s*EOF/gi, '[redacted-heredoc]');
               text = text.replace(/(gh[pousr]_[A-Za-z0-9_]+)/g, '[redacted-github-token]');
-              text = text.replace(/(sk-[A-Za-z0-9_-]{10,})/g, '[redacted-openai-key]');
+              text = text.replace(/(sk-[A-Za-z0-9_-]{10,})/g, '[redacted-api-key]');
               text = text.replace(/\$\{\{\s*secrets\.[^}]+\}\}/gi, '[redacted-secret-reference]');
               text = text.replace(/\s+/g, ' ').trim();
               if (text.length > maxLength) {
@@ -289,6 +303,7 @@ jobs:
                 `- Severity: ${analysis.severity}`,
                 `- Confidence: ${analysis.confidence}`,
                 `- Output mode: ${outputMode}`,
+                `- Model: ${githubModelsModel}`,
                 '',
                 '### Summary',
                 analysis.summary,
@@ -351,8 +366,15 @@ jobs:
               const excerpts = findInterestingSections(releaseText).slice(0, 8);
               const condensedReleaseText = excerpts.length > 0 ? excerpts.join('\n\n---\n\n') : releaseText.slice(0, 18000);
 
-              const prompt = [
-                'You are analyzing whether a Home Assistant release note is likely to introduce a breaking change for a specific Home Assistant add-on repository.',
+              const systemPrompt = [
+                'You analyze whether a Home Assistant release note is likely to introduce a breaking change for a specific Home Assistant add-on repository.',
+                'Return strict JSON only.',
+                'Do not include secrets.',
+                'Do not include shell commands that modify GitHub Actions runtime files.',
+                'Do not include workflow command syntax beginning with :: .'
+              ].join(' ');
+
+              const userPrompt = [
                 'Return STRICT JSON only with this exact schema:',
                 '{',
                 '  "should_open_issue": true,',
@@ -369,7 +391,6 @@ jobs:
                 '}',
                 '',
                 'Assess likely impact on add-on runtime, supervisor integration, ingress/frontend, packaging, Docker/base image assumptions, external API assumptions, or startup behavior.',
-                'Do not include secrets. Do not include shell commands that modify GitHub Actions runtime files. Do not include workflow command syntax beginning with :: .',
                 '',
                 `Repository: ${repoFullName}`,
                 '',
@@ -383,40 +404,31 @@ jobs:
                 condensedReleaseText
               ].join('\n');
 
-              const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
+              const modelResponse = await fetch('https://models.github.ai/inference/chat/completions', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${openaiApiKey}`
+                  'Authorization': `Bearer ${githubToken}`
                 },
                 body: JSON.stringify({
-                  model: process.env.OPENAI_MODEL || 'gpt-5',
-                  reasoning: { effort: 'medium' },
-                  input: [
-                    {
-                      role: 'user',
-                      content: [
-                        { type: 'input_text', text: prompt }
-                      ]
-                    }
-                  ],
-                  text: {
-                    format: {
-                      type: 'text'
-                    }
-                  }
+                  model: githubModelsModel,
+                  temperature: 0.2,
+                  messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                  ]
                 })
               });
 
-              if (!openaiResponse.ok) {
-                const errorText = await openaiResponse.text();
-                throw new Error(`OpenAI API request failed: ${openaiResponse.status} ${openaiResponse.statusText} - ${errorText}`);
+              if (!modelResponse.ok) {
+                const errorText = await modelResponse.text();
+                throw new Error(`GitHub Models request failed: ${modelResponse.status} ${modelResponse.statusText} - ${errorText}`);
               }
 
-              const payload = await openaiResponse.json();
-              const outputText = (payload.output_text || '').trim();
+              const payload = await modelResponse.json();
+              const outputText = parseModelText(payload);
               if (!outputText) {
-                throw new Error(`OpenAI response did not include output_text for ${version}`);
+                throw new Error(`GitHub Models response did not include message content for ${version}`);
               }
 
               const rawAnalysis = parseJsonResponse(outputText);
