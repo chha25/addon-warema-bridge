@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_NOTES_INDEX: https://www.home-assistant.io/blog/categories/release-notes/
+      DEVELOPER_BLOG_INDEX: https://developers.home-assistant.io/blog/
+      BUILDER_MIGRATION_POST: https://developers.home-assistant.io/blog/2026/04/02/builder-migration/
       GITHUB_MODELS_MODEL: openai/gpt-4.1-mini
       MIN_RISK_SCORE: '0.45'
       OUTPUT_MODE: console
@@ -36,6 +38,7 @@ jobs:
       MAX_CONTEXT_CHARS: '80000'
       MAX_FILE_CHARS: '8000'
       MAX_RELEASES: '3'
+      MAX_DEV_POSTS: '5'
 
     steps:
       - name: Check out repository
@@ -113,7 +116,7 @@ jobs:
               o.write(f"chars={len(ctx)}\n")
           PY
 
-      - name: Analyze release notes and publish results
+      - name: Analyze Home Assistant sources and publish results
         uses: actions/github-script@v7
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -133,6 +136,7 @@ jobs:
             const modelName = process.env.GITHUB_MODELS_MODEL || 'openai/gpt-4.1-mini';
             const minRiskScore = Number(process.env.MIN_RISK_SCORE || '0.45');
             const maxReleases = Number(process.env.MAX_RELEASES || '3');
+            const maxDevPosts = Number(process.env.MAX_DEV_POSTS || '5');
             const files = JSON.parse(process.env.FILES || '[]');
             const contextChars = Number(process.env.CHARS || '0');
             const repoContext = fs.readFileSync('addon_context.txt', 'utf8');
@@ -153,6 +157,16 @@ jobs:
                 .replace(/\s+/g, ' ')
                 .trim()
             );
+
+            const absoluteUrl = (maybePath, base) => {
+              try {
+                return new URL(maybePath, base).toString();
+              } catch {
+                return null;
+              }
+            };
+
+            const unique = (items) => [...new Set(items.filter(Boolean))];
 
             const parseModelText = (payload) => {
               if (typeof payload?.choices?.[0]?.message?.content === 'string') {
@@ -233,7 +247,7 @@ jobs:
                 sanitized.summary = 'Potential compatibility impact detected, but the generated analysis was sanitized because it contained unsafe output patterns.';
                 sanitized.reasoning = ['The generated response contained content patterns that are not allowed to be emitted by the workflow.'];
                 sanitized.matched_changes = [];
-                sanitized.fix_suggestions = ['Review the Home Assistant release notes manually for this version.'];
+                sanitized.fix_suggestions = ['Review the Home Assistant source material manually for this item.'];
                 sanitized.testing_checklist = ['Run a manual validation of install, startup, logs, and the add-on main functionality.'];
                 sanitized.confidence = 'low';
               }
@@ -241,28 +255,60 @@ jobs:
               return sanitized;
             };
 
-            const fetchReleaseLinks = async () => {
+            const fetchReleaseSources = async () => {
               const indexHtml = await fetch(process.env.RELEASE_NOTES_INDEX).then(async (response) => {
                 if (!response.ok) throw new Error(`Failed to fetch release note index: ${response.status} ${response.statusText}`);
                 return response.text();
               });
 
-              return [...new Set([...indexHtml.matchAll(/href="(\/blog\/\d{4}\/\d{2}\/\d{2}\/release-[^"]+)"/g)].map((m) => `https://www.home-assistant.io${m[1]}`))]
-                .slice(0, maxReleases);
+              const links = unique(
+                [...indexHtml.matchAll(/href="(\/blog\/\d{4}\/\d{2}\/\d{2}\/release-[^"]+)"/g)]
+                  .map((m) => absoluteUrl(m[1], 'https://www.home-assistant.io'))
+              ).slice(0, maxReleases);
+
+              return links.map((url) => ({ type: 'release_notes', url }));
             };
 
-            const releaseVersionFromUrl = (url) => {
-              const match = url.match(/release-(\d{4})(\d{1,2})\/?$/);
-              if (!match) return url;
-              return `${match[1]}.${String(Number(match[2]))}`;
+            const fetchDeveloperBlogSources = async () => {
+              const indexHtml = await fetch(process.env.DEVELOPER_BLOG_INDEX).then(async (response) => {
+                if (!response.ok) throw new Error(`Failed to fetch developer blog index: ${response.status} ${response.statusText}`);
+                return response.text();
+              });
+
+              const candidateLinks = unique(
+                [...indexHtml.matchAll(/href="([^"]+)"/g)]
+                  .map((m) => absoluteUrl(m[1], process.env.DEVELOPER_BLOG_INDEX))
+                  .filter((url) => url && url.startsWith('https://developers.home-assistant.io/blog/'))
+                  .filter((url) => /\/blog\/\d{4}\/\d{2}\/\d{2}\//.test(url))
+              );
+
+              const prioritized = [
+                process.env.BUILDER_MIGRATION_POST,
+                ...candidateLinks.filter((url) => url !== process.env.BUILDER_MIGRATION_POST)
+              ];
+
+              return unique(prioritized).slice(0, maxDevPosts).map((url) => ({ type: 'developer_blog', url }));
             };
 
-            const findInterestingSections = (text) => {
-              const terms = [
+            const itemIdFromUrl = (type, url) => {
+              if (type === 'release_notes') {
+                const match = url.match(/release-(\d{4})(\d{1,2})\/?$/);
+                if (match) return `${match[1]}.${String(Number(match[2]))}`;
+              }
+              const clean = url.replace(/https?:\/\//, '').replace(/\/$/, '');
+              return clean.split('/').slice(-2).join('/');
+            };
+
+            const displaySourceType = (type) => type === 'developer_blog' ? 'Developer Blog' : 'Release Notes';
+
+            const findInterestingSections = (text, type) => {
+              const commonTerms = [
                 'backward-incompatible changes', 'breaking change', 'deprecated', 'deprecation', 'removed',
                 'supervisor', 'add-on', 'addon', 'docker', 'container', 'ingress', 'api', 'websocket',
                 'frontend', 'panel', 'authentication', 'python', 'base image'
               ];
+              const developerTerms = ['builder', 'buildkit', 'build.yaml', 'dockerfile', 'migration', 'labels', 'multi-arch', 'base image'];
+              const terms = type === 'developer_blog' ? [...commonTerms, ...developerTerms] : commonTerms;
 
               const lower = text.toLowerCase();
               const snippets = [];
@@ -279,7 +325,7 @@ jobs:
                 }
                 if (snippets.length >= 12) break;
               }
-              return [...new Set(snippets)].slice(0, 8);
+              return unique(snippets).slice(0, 8);
             };
 
             const renderFindingMarkdown = (finding) => {
@@ -288,8 +334,9 @@ jobs:
               const suggestions = finding.analysis.fix_suggestions || [];
               const checklist = finding.analysis.testing_checklist || [];
               return [
-                `### ${finding.version}`,
-                `- Source: ${finding.url}`,
+                `### ${finding.title}`,
+                `- Source type: ${displaySourceType(finding.type)}`,
+                `- Source URL: ${finding.url}`,
                 `- Risk score: ${finding.analysis.risk_score}`,
                 `- Severity: ${finding.analysis.severity}`,
                 `- Confidence: ${finding.analysis.confidence}`,
@@ -301,18 +348,20 @@ jobs:
                 ...(reasoning.length ? reasoning.map((item) => `- ${item}`) : ['- No additional reasoning provided.']),
                 '',
                 '**Potential adjustments**',
-                ...(suggestions.length ? suggestions.map((item) => `- ${item}`) : ['- Review implementation and packaging against the new release.']),
+                ...(suggestions.length ? suggestions.map((item) => `- ${item}`) : ['- Review implementation and packaging against the source material.']),
                 '',
                 '**Testing checklist**',
                 ...(checklist.length ? checklist.map((item) => `- ${item}`) : ['- Verify install, startup, logs, and the main user flow.']),
                 '',
-                '**Matched release note excerpts**',
+                '**Matched excerpts**',
                 ...(matched.length ? matched.flatMap((item) => [`- **${item.title}**`, `  - Excerpt: ${item.excerpt || 'n/a'}`, `  - Impact: ${item.impact || 'n/a'}`]) : ['- No structured matched changes returned.']),
                 ''
               ].join('\n');
             };
 
-            const renderOverviewMarkdown = (releaseLinks, findings) => {
+            const renderOverviewMarkdown = (sources, findings) => {
+              const releaseSources = sources.filter((item) => item.type === 'release_notes');
+              const developerSources = sources.filter((item) => item.type === 'developer_blog');
               return [
                 '## Analysis overview',
                 '',
@@ -322,11 +371,14 @@ jobs:
                 `- Risk threshold: ${minRiskScore}`,
                 `- Context size: ${contextChars} characters`,
                 `- Context files: ${files.length}`,
-                `- Releases checked: ${releaseLinks.length}`,
+                `- Sources checked: ${sources.length}`,
                 `- Findings above threshold: ${findings.length}`,
                 '',
-                '### Checked release notes',
-                ...releaseLinks.map((url) => `- ${url}`),
+                '### Release notes checked',
+                ...(releaseSources.length ? releaseSources.map((item) => `- ${item.url}`) : ['- None']),
+                '',
+                '### Developer blog checked',
+                ...(developerSources.length ? developerSources.map((item) => `- ${item.url}`) : ['- None']),
                 '',
                 '### Repository context used',
                 ...(files.length ? files.map((file) => `- ${file}`) : ['- No repository files were selected.']),
@@ -334,15 +386,15 @@ jobs:
               ].join('\n');
             };
 
-            const createOrUpdateAggregateIssue = async (releaseLinks, findings) => {
-              const latestVersion = findings[0]?.version || 'current releases';
-              const issueTitle = `Home Assistant compatibility review: ${latestVersion} and related releases`;
+            const createOrUpdateAggregateIssue = async (sources, findings) => {
+              const latestTitle = findings[0]?.title || 'current sources';
+              const issueTitle = `Home Assistant compatibility review: ${latestTitle} and related changes`;
               const body = [
                 `Automated compatibility review for **${repoFullName}**.`,
                 '',
-                `This issue aggregates all findings from the latest run so there is at most one issue per run.`,
+                'This issue aggregates all findings from the latest run so there is at most one open compatibility review issue.',
                 '',
-                renderOverviewMarkdown(releaseLinks, findings),
+                renderOverviewMarkdown(sources, findings),
                 '## Findings',
                 '',
                 ...findings.map((finding) => renderFindingMarkdown(finding))
@@ -363,28 +415,19 @@ jobs:
               return { action: 'created', issueNumber: created.data.number };
             };
 
-            const releaseLinks = await fetchReleaseLinks();
-            if (releaseLinks.length === 0) {
-              core.setFailed('No Home Assistant release notes were found.');
-              return;
-            }
-
-            const findings = [];
-            const runNotes = [];
-
-            for (const url of releaseLinks) {
-              const version = releaseVersionFromUrl(url);
-              const html = await fetch(url).then(async (response) => {
-                if (!response.ok) throw new Error(`Failed to fetch release note ${url}: ${response.status} ${response.statusText}`);
+            const analyzeSource = async (source) => {
+              const html = await fetch(source.url).then(async (response) => {
+                if (!response.ok) throw new Error(`Failed to fetch source ${source.url}: ${response.status} ${response.statusText}`);
                 return response.text();
               });
 
-              const releaseText = htmlToText(html);
-              const excerpts = findInterestingSections(releaseText);
-              const condensedReleaseText = excerpts.length ? excerpts.join('\n\n---\n\n') : releaseText.slice(0, 18000);
+              const sourceText = htmlToText(html);
+              const excerpts = findInterestingSections(sourceText, source.type);
+              const condensedSourceText = excerpts.length ? excerpts.join('\n\n---\n\n') : sourceText.slice(0, 18000);
+              const sourceId = itemIdFromUrl(source.type, source.url);
 
               const systemPrompt = [
-                'You analyze whether a Home Assistant release note is likely to introduce a breaking change for a specific Home Assistant add-on repository.',
+                'You analyze whether a Home Assistant source is likely to introduce a breaking change or required migration for a specific Home Assistant add-on repository.',
                 'Return strict JSON only.',
                 'Do not include secrets.',
                 'Do not include shell commands that modify GitHub Actions runtime files.',
@@ -407,18 +450,20 @@ jobs:
                 '  "confidence": "low|medium|high"',
                 '}',
                 '',
-                'Assess likely impact on add-on runtime, supervisor integration, ingress/frontend, packaging, Docker/base image assumptions, external API assumptions, or startup behavior.',
+                'Assess likely impact on add-on runtime, supervisor integration, ingress/frontend, packaging, Docker/base image assumptions, external API assumptions, startup behavior, build pipeline changes, and required migrations.',
+                'For developer blog migration posts, treat future required migration work as a valid finding even if it is not yet an immediate runtime break.',
                 '',
                 `Repository: ${repoFullName}`,
                 '',
                 'Repository context:',
                 repoContext,
                 '',
-                `Home Assistant release: ${version}`,
-                `Source URL: ${url}`,
+                `Source type: ${displaySourceType(source.type)}`,
+                `Source identifier: ${sourceId}`,
+                `Source URL: ${source.url}`,
                 '',
-                'Relevant excerpts from the release notes:',
-                condensedReleaseText
+                'Relevant excerpts from the source:',
+                condensedSourceText
               ].join('\n');
 
               const response = await fetch('https://models.github.ai/inference/chat/completions', {
@@ -444,20 +489,42 @@ jobs:
 
               const payload = await response.json();
               const outputText = parseModelText(payload);
-              if (!outputText) throw new Error(`GitHub Models response did not include message content for ${version}`);
+              if (!outputText) throw new Error(`GitHub Models response did not include message content for ${sourceId}`);
 
               const analysis = securityCheck(parseJsonResponse(outputText));
-              const shouldKeep = Boolean(analysis.should_create_finding) && analysis.risk_score >= minRiskScore;
+              return {
+                type: source.type,
+                url: source.url,
+                title: sourceId,
+                analysis
+              };
+            };
+
+            const releaseSources = await fetchReleaseSources();
+            const developerSources = await fetchDeveloperBlogSources();
+            const allSources = [...releaseSources, ...developerSources];
+
+            if (!allSources.length) {
+              core.setFailed('No Home Assistant sources were found.');
+              return;
+            }
+
+            const findings = [];
+            const runNotes = [];
+
+            for (const source of allSources) {
+              const result = await analyzeSource(source);
+              const shouldKeep = Boolean(result.analysis.should_create_finding) && result.analysis.risk_score >= minRiskScore;
 
               if (shouldKeep) {
-                findings.push({ version, url, analysis });
-                runNotes.push(`- ${version}: finding kept (risk=${analysis.risk_score}, severity=${analysis.severity})`);
+                findings.push(result);
+                runNotes.push(`- ${result.title} [${displaySourceType(result.type)}]: kept (risk=${result.analysis.risk_score}, severity=${result.analysis.severity})`);
               } else {
-                runNotes.push(`- ${version}: below threshold or not relevant (risk=${analysis.risk_score})`);
+                runNotes.push(`- ${result.title} [${displaySourceType(result.type)}]: below threshold or not relevant (risk=${result.analysis.risk_score})`);
               }
             }
 
-            const overviewMarkdown = renderOverviewMarkdown(releaseLinks, findings);
+            const overviewMarkdown = renderOverviewMarkdown(allSources, findings);
 
             await core.summary
               .addHeading('Home Assistant compatibility analysis', 1)
@@ -468,7 +535,7 @@ jobs:
             if (findings.length) {
               for (const finding of findings) {
                 await core.summary
-                  .addHeading(`Finding: ${finding.version}`, 2)
+                  .addHeading(`Finding: ${finding.title}`, 2)
                   .addRaw(renderFindingMarkdown(finding))
                   .addEOL()
                   .write();
@@ -476,13 +543,13 @@ jobs:
             } else {
               await core.summary
                 .addHeading('Findings', 2)
-                .addRaw('No Home Assistant release changes exceeded the configured risk threshold.')
+                .addRaw('No Home Assistant release-note or developer-blog changes exceeded the configured risk threshold.')
                 .addEOL()
                 .write();
             }
 
             if (outputMode === 'issue' && findings.length) {
-              const issueResult = await createOrUpdateAggregateIssue(releaseLinks, findings);
+              const issueResult = await createOrUpdateAggregateIssue(allSources, findings);
               await core.summary
                 .addHeading('Issue publishing', 2)
                 .addRaw(`Aggregate issue ${issueResult.action}: #${issueResult.issueNumber}`)
