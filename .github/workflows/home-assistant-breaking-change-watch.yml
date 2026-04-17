@@ -1,14 +1,15 @@
 name: Watch Home Assistant breaking changes
+run-name: Home Assistant breaking changes (${{ inputs.output_mode || 'console' }})
 
 on:
   schedule:
-    - cron: "17 6 * * *"
+    - cron: '17 6 * * *'
   workflow_dispatch:
     inputs:
       output_mode:
-        description: "How to publish findings"
+        description: How to publish findings
         required: false
-        default: "console"
+        default: console
         type: choice
         options:
           - console
@@ -19,109 +20,137 @@ permissions:
   issues: write
   models: read
 
+concurrency:
+  group: ha-breaking-change-watch
+  cancel-in-progress: false
+
 jobs:
   detect-breaking-changes:
     runs-on: ubuntu-latest
     env:
       RELEASE_NOTES_INDEX: https://www.home-assistant.io/blog/categories/release-notes/
       GITHUB_MODELS_MODEL: openai/gpt-4.1-mini
-      MIN_RISK_SCORE: "0.45"
+      MIN_RISK_SCORE: '0.45'
       OUTPUT_MODE: console
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      MAX_CONTEXT_FILES: '25'
+      MAX_CONTEXT_CHARS: '80000'
+      MAX_FILE_CHARS: '8000'
+      MAX_RELEASES: '3'
 
-      - name: Build add-on context for analysis
-        id: build_context
-        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build repository context
+        id: ctx
         run: |
           python <<'PY'
-          import glob
-          import json
-          import os
+          import glob, json, os
+          from pathlib import Path
+
+          max_files = int(os.environ['MAX_CONTEXT_FILES'])
+          max_total = int(os.environ['MAX_CONTEXT_CHARS'])
+          max_file = int(os.environ['MAX_FILE_CHARS'])
 
           patterns = [
-              'README*','DOCS*','CHANGELOG*','repository.yaml','build.yaml','build.yml','config.yaml','config.yml','Dockerfile','run.sh',
-              '**/config.yaml','**/config.yml','**/build.yaml','**/build.yml','**/Dockerfile','**/run.sh','**/*.md'
+              'repository.yaml','build.yaml','build.yml','config.yaml','config.yml','Dockerfile','run.sh',
+              '**/config.yaml','**/config.yml','**/build.yaml','**/build.yml','**/Dockerfile','**/run.sh','README*','**/*.md'
           ]
 
-          candidates = []
-          for pattern in patterns:
-              candidates.extend(glob.glob(pattern, recursive=True))
+          def score(p):
+              p = p.lower()
+              s = 0
+              if 'config.yaml' in p: s+=120
+              if 'build' in p: s+=100
+              if 'dockerfile' in p: s+=100
+              if 'run.sh' in p: s+=80
+              if 'readme' in p: s+=60
+              if p.endswith('.md'): s+=20
+              if 'test' in p: s-=30
+              return s
 
-          selected = []
-          seen = set()
-          for path in candidates:
-              if not os.path.isfile(path): continue
-              if path.startswith('.git/') or '/.git/' in path or path.startswith('.github/'): continue
-              if path in seen: continue
-              seen.add(path)
-              selected.append(path)
+          files = []
+          seen=set()
+          for pat in patterns:
+              for f in glob.glob(pat, recursive=True):
+                  if f in seen: continue
+                  seen.add(f)
+                  if not os.path.isfile(f): continue
+                  if f.startswith('.git') or f.startswith('.github'): continue
+                  files.append(f)
 
-          selected = sorted(selected)[:20]
+          files = sorted(files, key=lambda x:(-score(x), x))[:max_files]
 
-          parts = []
-          total_chars = 0
-          max_total_chars = 50000
-          max_file_chars = 5000
+          total=0
+          used=[]
+          parts=[]
 
-          for path in selected:
+          for f in files:
               try:
-                  with open(path, 'r', encoding='utf-8') as f:
-                      content = f.read(max_file_chars)
-              except Exception:
+                  c = Path(f).read_text(encoding='utf-8')[:max_file]
+              except:
                   continue
-
-              block = f"\n\n### FILE: {path}\n{content.strip()}\n"
-              if total_chars + len(block) > max_total_chars:
-                  break
+              block=f"\n\n### FILE: {f}\n{c.strip()}"
+              if total+len(block)>max_total: break
               parts.append(block)
-              total_chars += len(block)
+              used.append(f)
+              total+=len(block)
 
-          context = '\n'.join(parts).strip()
-          with open('addon_context.txt', 'w', encoding='utf-8') as f:
-              f.write(context)
+          ctx='\n'.join(parts)
+          Path('addon_context.txt').write_text(ctx, encoding='utf-8')
 
-          print(f"::set-output name=files::{json.dumps(selected)}")
+          with open(os.environ['GITHUB_OUTPUT'],'a') as o:
+              o.write(f"files={json.dumps(used)}\n")
+              o.write(f"chars={len(ctx)}\n")
           PY
 
-      - name: Analyze release notes with GitHub Models and publish results
+      - name: Analyze with GitHub Models
         uses: actions/github-script@v7
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          INPUT_OUTPUT_MODE: ${{ inputs.output_mode }}
-          ANALYZED_FILES: ${{ steps.build_context.outputs.files }}
+          FILES: ${{ steps.ctx.outputs.files }}
+          CHARS: ${{ steps.ctx.outputs.chars }}
         with:
           script: |
-            const fs = require('fs');
-            const analyzedFiles = JSON.parse(process.env.ANALYZED_FILES || '[]');
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const repoFullName = `${owner}/${repo}`;
-            const githubModelsModel = process.env.GITHUB_MODELS_MODEL;
+            const fs=require('fs');
+            const files=JSON.parse(process.env.FILES||'[]');
+            const chars=process.env.CHARS;
 
-            const summaryIntro = [
-              '## Analysis Context',
-              '',
-              `Repository: ${repoFullName}`,
-              `Model: ${githubModelsModel}`,
-              '',
-              '### Analyzed files (context base):',
-              ...(analyzedFiles.length ? analyzedFiles.map(f => `- ${f}`) : ['- none detected']),
-              '',
-              '### Checked against:',
-              '- Home Assistant Release Notes (latest 3 versions)',
-              '- Breaking Changes / Deprecations / Supervisor / Docker / API sections',
-              ''
-            ].join('\n');
+            const ctx=fs.readFileSync('addon_context.txt','utf8');
+
+            const html=await fetch(process.env.RELEASE_NOTES_INDEX).then(r=>r.text());
+            const links=[...html.matchAll(/href="(\/blog\/\d{4}\/\d{2}\/\d{2}\/release-[^"]+)"/g)]
+              .map(m=>`https://www.home-assistant.io${m[1]}`)
+              .slice(0,parseInt(process.env.MAX_RELEASES));
 
             await core.summary
-              .addHeading('Home Assistant Analysis Overview', 1)
-              .addRaw(summaryIntro)
-              .addEOL()
+              .addHeading('Analysis Overview',1)
+              .addRaw(`Files used: ${files.length}\nContext size: ${chars}\nReleases checked:\n${links.join('\n')}`)
               .write();
 
-            core.info('Analysis context:');
-            core.info(summaryIntro);
+            for(const url of links){
+              const txt=await fetch(url).then(r=>r.text());
 
-            // existing logic continues unchanged...
+              const res=await fetch('https://models.github.ai/inference/chat/completions',{
+                method:'POST',
+                headers:{
+                  'Authorization':`Bearer ${process.env.GITHUB_TOKEN}`,
+                  'Content-Type':'application/json'
+                },
+                body:JSON.stringify({
+                  model:process.env.GITHUB_MODELS_MODEL,
+                  temperature:0.2,
+                  messages:[
+                    {role:'system',content:'Return JSON risk analysis'},
+                    {role:'user',content:`Repo:\n${ctx}\n\nRelease:\n${txt.slice(0,15000)}`}
+                  ]
+                })
+              });
+
+              const out=await res.json();
+              const text=out?.choices?.[0]?.message?.content||'';
+
+              core.info(`Result for ${url}`);
+              core.info(text);
+
+              await core.summary.addHeading(url,2).addRaw(text).write();
+            }
