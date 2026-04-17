@@ -1,0 +1,180 @@
+name: Watch Home Assistant breaking changes
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  detect-breaking-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scan Home Assistant release notes for add-on risks
+        uses: actions/github-script@v7
+        env:
+          RELEASE_NOTES_INDEX: https://www.home-assistant.io/blog/categories/release-notes/
+          KEYWORDS_JSON: '["warema","warema bridge","bridge","addon","add-on","apps panel","app panel","home assistant add-on","supervisor","ingress","bashio","s6-overlay","docker","container","base image","repository","api"]'
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const repoFullName = `${owner}/${repo}`;
+
+            const decodeHtml = (value) => value
+              .replace(/&#39;/g, "'")
+              .replace(/&quot;/g, '"')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&nbsp;/g, ' ');
+
+            const htmlToText = (html) => decodeHtml(
+              html
+                .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+                .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+            );
+
+            const unique = (items) => [...new Set(items)];
+
+            const releaseVersionFromUrl = (url) => {
+              const match = url.match(/release-(\d{4})(\d{1,2})\/?$/);
+              if (!match) return url;
+              return `${match[1]}.${String(Number(match[2]))}`;
+            };
+
+            const findSnippets = (text, keywords) => {
+              const lower = text.toLowerCase();
+              const snippets = [];
+
+              for (const keyword of keywords) {
+                const term = keyword.toLowerCase();
+                let fromIndex = 0;
+
+                while (true) {
+                  const index = lower.indexOf(term, fromIndex);
+                  if (index === -1) break;
+
+                  const start = Math.max(0, index - 220);
+                  const end = Math.min(text.length, index + term.length + 220);
+                  const snippet = text.slice(start, end).trim();
+                  snippets.push({ keyword, snippet });
+                  fromIndex = index + term.length;
+
+                  if (snippets.length >= 8) return snippets;
+                }
+              }
+
+              return snippets;
+            };
+
+            const keywordHints = {
+              supervisor: '- Verify that no Supervisor API contract used by the add-on has changed.\n',
+              ingress: '- Test ingress/web UI access from the Home Assistant sidebar.\n',
+              addon: '- Review add-on metadata, naming, and repository compatibility with the latest Home Assistant UI.\n',
+              'add-on': '- Review add-on metadata, naming, and repository compatibility with the latest Home Assistant UI.\n',
+              'apps panel': '- Review documentation and screenshots for the renamed/updated Apps panel.\n',
+              docker: '- Verify the container image, runtime requirements, and startup behavior on the latest Home Assistant host.\n',
+              container: '- Verify the container image, runtime requirements, and startup behavior on the latest Home Assistant host.\n',
+              bashio: '- Validate Bashio usage against the current add-on base image behavior.\n',
+              's6-overlay': '- Validate service startup and shutdown behavior with the current S6 overlay expectations.\n',
+              api: '- Verify external and internal API assumptions used by the add-on.\n',
+              warema: '- Smoke-test the WAREMA bridge communication path against the latest Home Assistant release.\n',
+              bridge: '- Smoke-test the bridge startup and entity exposure after upgrading Home Assistant.\n'
+            };
+
+            const keywords = JSON.parse(process.env.KEYWORDS_JSON);
+            const indexHtml = await fetch(process.env.RELEASE_NOTES_INDEX).then((response) => {
+              if (!response.ok) {
+                throw new Error(`Failed to fetch release note index: ${response.status} ${response.statusText}`);
+              }
+              return response.text();
+            });
+
+            const releaseLinks = unique(
+              [...indexHtml.matchAll(/href="(\/blog\/\d{4}\/\d{2}\/\d{2}\/release-[^"]+)"/g)]
+                .map((match) => `https://www.home-assistant.io${match[1]}`)
+            ).slice(0, 5);
+
+            if (releaseLinks.length === 0) {
+              core.setFailed('No Home Assistant release notes were found.');
+              return;
+            }
+
+            for (const releaseUrl of releaseLinks) {
+              const html = await fetch(releaseUrl).then((response) => {
+                if (!response.ok) {
+                  throw new Error(`Failed to fetch release note ${releaseUrl}: ${response.status} ${response.statusText}`);
+                }
+                return response.text();
+              });
+
+              const text = htmlToText(html);
+              const snippets = findSnippets(text, keywords);
+
+              if (snippets.length === 0) {
+                core.info(`No relevant matches found for ${releaseUrl}`);
+                continue;
+              }
+
+              const version = releaseVersionFromUrl(releaseUrl);
+              const issueTitle = `Potential Home Assistant breaking change impact: ${version}`;
+
+              const existing = await github.rest.search.issuesAndPullRequests({
+                q: `repo:${repoFullName} is:issue \"${issueTitle}\"`,
+                per_page: 5
+              });
+
+              if (existing.data.items.length > 0) {
+                core.info(`Issue already exists for ${version}`);
+                continue;
+              }
+
+              const matchedKeywords = unique(snippets.map((item) => item.keyword.toLowerCase()));
+              const suggestedActions = unique(
+                matchedKeywords
+                  .map((keyword) => keywordHints[keyword])
+                  .filter(Boolean)
+              ).join('');
+
+              const snippetLines = snippets
+                .map((item) => `- **${item.keyword}**: ${item.snippet.replace(/\s+/g, ' ').trim()}`)
+                .join('\n');
+
+              const body = [
+                `A scheduled workflow detected potentially relevant Home Assistant release changes for **${repoFullName}**.`,
+                '',
+                `- Release: ${version}`,
+                `- Source: ${releaseUrl}`,
+                `- Matched keywords: ${matchedKeywords.join(', ')}`,
+                '',
+                '## Why this was flagged',
+                'The latest Home Assistant release notes contain terms that may affect this add-on or its runtime environment.',
+                '',
+                '## Matched excerpts',
+                snippetLines,
+                '',
+                '## Suggested next steps',
+                suggestedActions || '- Review the release notes and test the add-on against the new Home Assistant version.\n',
+                '- Validate install, startup, logs, and core functionality in a current Home Assistant test instance.\n',
+                '- Update documentation, configuration handling, or runtime dependencies if required.\n',
+                '',
+                '## Notes',
+                '- This issue was created automatically by `.github/workflows/home-assistant-breaking-change-watch.yml`.\n- Close this issue as false positive if the detected change does not affect the add-on.'
+              ].join('\n');
+
+              await github.rest.issues.create({
+                owner,
+                repo,
+                title: issueTitle,
+                body
+              });
+
+              core.info(`Created issue for ${version}`);
+            }
