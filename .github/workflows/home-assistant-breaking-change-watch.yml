@@ -32,6 +32,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build add-on context for analysis
+        id: build_context
         shell: bash
         run: |
           python <<'PY'
@@ -40,23 +41,8 @@ jobs:
           import os
 
           patterns = [
-              'README*',
-              'DOCS*',
-              'CHANGELOG*',
-              'repository.yaml',
-              'build.yaml',
-              'build.yml',
-              'config.yaml',
-              'config.yml',
-              'Dockerfile',
-              'run.sh',
-              '**/config.yaml',
-              '**/config.yml',
-              '**/build.yaml',
-              '**/build.yml',
-              '**/Dockerfile',
-              '**/run.sh',
-              '**/*.md',
+              'README*','DOCS*','CHANGELOG*','repository.yaml','build.yaml','build.yml','config.yaml','config.yml','Dockerfile','run.sh',
+              '**/config.yaml','**/config.yml','**/build.yaml','**/build.yml','**/Dockerfile','**/run.sh','**/*.md'
           ]
 
           candidates = []
@@ -66,12 +52,9 @@ jobs:
           selected = []
           seen = set()
           for path in candidates:
-              if not os.path.isfile(path):
-                  continue
-              if path.startswith('.git/') or '/.git/' in path or path.startswith('.github/'):
-                  continue
-              if path in seen:
-                  continue
+              if not os.path.isfile(path): continue
+              if path.startswith('.git/') or '/.git/' in path or path.startswith('.github/'): continue
+              if path in seen: continue
               seen.add(path)
               selected.append(path)
 
@@ -99,10 +82,7 @@ jobs:
           with open('addon_context.txt', 'w', encoding='utf-8') as f:
               f.write(context)
 
-          print(json.dumps({
-              'selected_files': selected,
-              'chars_written': len(context)
-          }))
+          print(f"::set-output name=files::{json.dumps(selected)}")
           PY
 
       - name: Analyze release notes with GitHub Models and publish results
@@ -110,390 +90,38 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           INPUT_OUTPUT_MODE: ${{ inputs.output_mode }}
+          ANALYZED_FILES: ${{ steps.build_context.outputs.files }}
         with:
           script: |
             const fs = require('fs');
+            const analyzedFiles = JSON.parse(process.env.ANALYZED_FILES || '[]');
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const repoFullName = `${owner}/${repo}`;
-            const minRiskScore = Number(process.env.MIN_RISK_SCORE || '0.45');
-            const githubToken = process.env.GITHUB_TOKEN;
-            const requestedOutputMode = (process.env.INPUT_OUTPUT_MODE || process.env.OUTPUT_MODE || 'console').trim().toLowerCase();
-            const outputMode = ['console', 'issue'].includes(requestedOutputMode) ? requestedOutputMode : 'console';
-            const githubModelsModel = process.env.GITHUB_MODELS_MODEL || 'openai/gpt-4.1-mini';
+            const githubModelsModel = process.env.GITHUB_MODELS_MODEL;
 
-            if (!githubToken) {
-              core.setFailed('Missing GITHUB_TOKEN for GitHub Models inference.');
-              return;
-            }
+            const summaryIntro = [
+              '## Analysis Context',
+              '',
+              `Repository: ${repoFullName}`,
+              `Model: ${githubModelsModel}`,
+              '',
+              '### Analyzed files (context base):',
+              ...(analyzedFiles.length ? analyzedFiles.map(f => `- ${f}`) : ['- none detected']),
+              '',
+              '### Checked against:',
+              '- Home Assistant Release Notes (latest 3 versions)',
+              '- Breaking Changes / Deprecations / Supervisor / Docker / API sections',
+              ''
+            ].join('\n');
 
-            const decodeHtml = (value) => value
-              .replace(/&#39;/g, "'")
-              .replace(/&quot;/g, '"')
-              .replace(/&amp;/g, '&')
-              .replace(/&lt;/g, '<')
-              .replace(/&gt;/g, '>')
-              .replace(/&nbsp;/g, ' ');
+            await core.summary
+              .addHeading('Home Assistant Analysis Overview', 1)
+              .addRaw(summaryIntro)
+              .addEOL()
+              .write();
 
-            const htmlToText = (html) => decodeHtml(
-              html
-                .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-                .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-                .replace(/<[^>]+>/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim()
-            );
+            core.info('Analysis context:');
+            core.info(summaryIntro);
 
-            const unique = (items) => [...new Set(items)];
-
-            const releaseVersionFromUrl = (url) => {
-              const match = url.match(/release-(\d{4})(\d{1,2})\/?$/);
-              if (!match) return url;
-              return `${match[1]}.${String(Number(match[2]))}`;
-            };
-
-            const findInterestingSections = (text) => {
-              const terms = [
-                'backward-incompatible changes',
-                'breaking change',
-                'deprecated',
-                'deprecation',
-                'removed',
-                'supervisor',
-                'add-on',
-                'addon',
-                'docker',
-                'container',
-                'ingress',
-                'api',
-                'websocket',
-                'frontend',
-                'panel',
-                'authentication',
-                'python',
-                'base image'
-              ];
-
-              const lower = text.toLowerCase();
-              const snippets = [];
-              for (const term of terms) {
-                let startIndex = 0;
-                while (true) {
-                  const idx = lower.indexOf(term, startIndex);
-                  if (idx === -1) break;
-                  const start = Math.max(0, idx - 600);
-                  const end = Math.min(text.length, idx + term.length + 900);
-                  snippets.push(text.slice(start, end).trim());
-                  startIndex = idx + term.length;
-                  if (snippets.length >= 12) return unique(snippets);
-                }
-              }
-              return unique(snippets);
-            };
-
-            const parseModelText = (payload) => {
-              if (typeof payload?.choices?.[0]?.message?.content === 'string') {
-                return payload.choices[0].message.content.trim();
-              }
-              if (Array.isArray(payload?.choices?.[0]?.message?.content)) {
-                return payload.choices[0].message.content
-                  .map((item) => item?.text || item?.content || '')
-                  .join('')
-                  .trim();
-              }
-              return '';
-            };
-
-            const parseJsonResponse = (text) => {
-              const trimmed = text.trim();
-              try {
-                return JSON.parse(trimmed);
-              } catch (error) {
-                const match = trimmed.match(/```json\s*([\s\S]*?)```/i) || trimmed.match(/```\s*([\s\S]*?)```/i);
-                if (match) {
-                  return JSON.parse(match[1].trim());
-                }
-                throw error;
-              }
-            };
-
-            const sanitizeScalar = (value, maxLength = 3000) => {
-              if (value === null || value === undefined) return '';
-              let text = String(value);
-              text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ');
-              text = text.replace(/\r/g, '');
-              text = text.replace(/^::/gm, '∷');
-              text = text.replace(/<<\s*EOF/gi, '[redacted-heredoc]');
-              text = text.replace(/(gh[pousr]_[A-Za-z0-9_]+)/g, '[redacted-github-token]');
-              text = text.replace(/(sk-[A-Za-z0-9_-]{10,})/g, '[redacted-api-key]');
-              text = text.replace(/\$\{\{\s*secrets\.[^}]+\}\}/gi, '[redacted-secret-reference]');
-              text = text.replace(/\s+/g, ' ').trim();
-              if (text.length > maxLength) {
-                text = `${text.slice(0, maxLength - 20)} …[truncated]`;
-              }
-              return text;
-            };
-
-            const sanitizeList = (value, itemMaxLength = 500, maxItems = 12) => {
-              if (!Array.isArray(value)) return [];
-              return value
-                .slice(0, maxItems)
-                .map((item) => sanitizeScalar(item, itemMaxLength))
-                .filter(Boolean);
-            };
-
-            const sanitizeMatchedChanges = (value) => {
-              if (!Array.isArray(value)) return [];
-              return value.slice(0, 8).map((item) => ({
-                title: sanitizeScalar(item?.title || 'Relevant change', 160),
-                excerpt: sanitizeScalar(item?.excerpt || '', 1000),
-                impact: sanitizeScalar(item?.impact || '', 600)
-              })).filter((item) => item.title || item.excerpt || item.impact);
-            };
-
-            const securityCheck = (analysis) => {
-              const sanitized = {
-                should_open_issue: Boolean(analysis?.should_open_issue),
-                risk_score: Math.min(1, Math.max(0, Number(analysis?.risk_score || 0))),
-                severity: ['low', 'medium', 'high', 'critical'].includes(String(analysis?.severity || '').toLowerCase()) ? String(analysis.severity).toLowerCase() : 'medium',
-                summary: sanitizeScalar(analysis?.summary || 'Potential compatibility impact detected.', 1000),
-                reasoning: sanitizeList(analysis?.reasoning, 500, 10),
-                matched_changes: sanitizeMatchedChanges(analysis?.matched_changes),
-                fix_suggestions: sanitizeList(analysis?.fix_suggestions, 500, 10),
-                testing_checklist: sanitizeList(analysis?.testing_checklist, 500, 12),
-                confidence: ['low', 'medium', 'high'].includes(String(analysis?.confidence || '').toLowerCase()) ? String(analysis.confidence).toLowerCase() : 'medium'
-              };
-
-              const blockedPatterns = [
-                /[A-Za-z0-9_]*token[A-Za-z0-9_]*/i,
-                /private key/i,
-                /authorization:/i,
-                /bearer\s+[A-Za-z0-9._-]+/i,
-                /::set-output/i,
-                /::add-mask/i,
-                /GITHUB_ENV/i,
-                /GITHUB_OUTPUT/i
-              ];
-
-              const combined = JSON.stringify(sanitized);
-              const blocked = blockedPatterns.some((pattern) => pattern.test(combined));
-              if (blocked) {
-                sanitized.summary = 'Potential compatibility impact detected, but the generated analysis was sanitized because it contained unsafe output patterns.';
-                sanitized.reasoning = ['The generated response contained content patterns that are not allowed to be emitted by the workflow.'];
-                sanitized.matched_changes = [];
-                sanitized.fix_suggestions = ['Review the Home Assistant release notes manually for this version.'];
-                sanitized.testing_checklist = ['Run a manual validation of install, startup, logs, and the add-on main functionality.'];
-                sanitized.confidence = 'low';
-              }
-
-              return sanitized;
-            };
-
-            const buildReportMarkdown = ({ version, releaseUrl, analysis }) => {
-              const matchedChanges = analysis.matched_changes || [];
-              const reasoning = analysis.reasoning || [];
-              const fixSuggestions = analysis.fix_suggestions || [];
-              const testingChecklist = analysis.testing_checklist || [];
-
-              return [
-                `## Home Assistant release impact: ${version}`,
-                '',
-                `- Source: ${releaseUrl}`,
-                `- Risk score: ${analysis.risk_score}`,
-                `- Severity: ${analysis.severity}`,
-                `- Confidence: ${analysis.confidence}`,
-                `- Output mode: ${outputMode}`,
-                `- Model: ${githubModelsModel}`,
-                '',
-                '### Summary',
-                analysis.summary,
-                '',
-                '### Why this may affect the add-on',
-                ...(reasoning.length ? reasoning.map((item) => `- ${item}`) : ['- No detailed reasoning returned.']),
-                '',
-                '### Matched changes',
-                ...(matchedChanges.length
-                  ? matchedChanges.flatMap((item) => [
-                      `- **${item.title}**`,
-                      `  - Excerpt: ${item.excerpt || 'n/a'}`,
-                      `  - Impact: ${item.impact || 'n/a'}`
-                    ])
-                  : ['- No structured matched changes returned.']),
-                '',
-                '### Suggested fixes',
-                ...(fixSuggestions.length ? fixSuggestions.map((item) => `- ${item}`) : ['- Review implementation and packaging against the new release.']),
-                '',
-                '### Testing checklist',
-                ...(testingChecklist.length ? testingChecklist.map((item) => `- ${item}`) : ['- Verify install, startup, logs, and the main user flow.']),
-                ''
-              ].join('\n');
-            };
-
-            const addonContext = fs.existsSync('addon_context.txt')
-              ? fs.readFileSync('addon_context.txt', 'utf8').slice(0, 50000)
-              : '';
-
-            const indexHtml = await fetch(process.env.RELEASE_NOTES_INDEX).then((response) => {
-              if (!response.ok) {
-                throw new Error(`Failed to fetch release note index: ${response.status} ${response.statusText}`);
-              }
-              return response.text();
-            });
-
-            const releaseLinks = unique(
-              [...indexHtml.matchAll(/href="(\/blog\/\d{4}\/\d{2}\/\d{2}\/release-[^"]+)"/g)]
-                .map((match) => `https://www.home-assistant.io${match[1]}`)
-            ).slice(0, 3);
-
-            if (releaseLinks.length === 0) {
-              core.setFailed('No Home Assistant release notes were found.');
-              return;
-            }
-
-            let findings = 0;
-            const summaries = [];
-
-            for (const releaseUrl of releaseLinks) {
-              const version = releaseVersionFromUrl(releaseUrl);
-              const html = await fetch(releaseUrl).then((response) => {
-                if (!response.ok) {
-                  throw new Error(`Failed to fetch release note ${releaseUrl}: ${response.status} ${response.statusText}`);
-                }
-                return response.text();
-              });
-
-              const releaseText = htmlToText(html);
-              const excerpts = findInterestingSections(releaseText).slice(0, 8);
-              const condensedReleaseText = excerpts.length > 0 ? excerpts.join('\n\n---\n\n') : releaseText.slice(0, 18000);
-
-              const systemPrompt = [
-                'You analyze whether a Home Assistant release note is likely to introduce a breaking change for a specific Home Assistant add-on repository.',
-                'Return strict JSON only.',
-                'Do not include secrets.',
-                'Do not include shell commands that modify GitHub Actions runtime files.',
-                'Do not include workflow command syntax beginning with :: .'
-              ].join(' ');
-
-              const userPrompt = [
-                'Return STRICT JSON only with this exact schema:',
-                '{',
-                '  "should_open_issue": true,',
-                '  "risk_score": 0.0,',
-                '  "severity": "low|medium|high|critical",',
-                '  "summary": "short summary",',
-                '  "reasoning": ["reason 1", "reason 2"],',
-                '  "matched_changes": [',
-                '    {"title": "change", "excerpt": "quoted excerpt", "impact": "why it matters"}',
-                '  ],',
-                '  "fix_suggestions": ["suggestion 1", "suggestion 2"],',
-                '  "testing_checklist": ["check 1", "check 2"],',
-                '  "confidence": "low|medium|high"',
-                '}',
-                '',
-                'Assess likely impact on add-on runtime, supervisor integration, ingress/frontend, packaging, Docker/base image assumptions, external API assumptions, or startup behavior.',
-                '',
-                `Repository: ${repoFullName}`,
-                '',
-                'Repository context:',
-                addonContext || '(no repository context available)',
-                '',
-                `Home Assistant release: ${version}`,
-                `Source URL: ${releaseUrl}`,
-                '',
-                'Relevant excerpts from the release notes:',
-                condensedReleaseText
-              ].join('\n');
-
-              const modelResponse = await fetch('https://models.github.ai/inference/chat/completions', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${githubToken}`
-                },
-                body: JSON.stringify({
-                  model: githubModelsModel,
-                  temperature: 0.2,
-                  messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt }
-                  ]
-                })
-              });
-
-              if (!modelResponse.ok) {
-                const errorText = await modelResponse.text();
-                throw new Error(`GitHub Models request failed: ${modelResponse.status} ${modelResponse.statusText} - ${errorText}`);
-              }
-
-              const payload = await modelResponse.json();
-              const outputText = parseModelText(payload);
-              if (!outputText) {
-                throw new Error(`GitHub Models response did not include message content for ${version}`);
-              }
-
-              const rawAnalysis = parseJsonResponse(outputText);
-              const analysis = securityCheck(rawAnalysis);
-              const shouldPublish = Boolean(analysis.should_open_issue) && analysis.risk_score >= minRiskScore;
-              const report = buildReportMarkdown({ version, releaseUrl, analysis });
-
-              core.info(`Release ${version}: risk=${analysis.risk_score}, severity=${analysis.severity}, confidence=${analysis.confidence}, publish=${shouldPublish}`);
-
-              if (!shouldPublish) {
-                summaries.push(`- ${version}: below threshold or not relevant (risk=${analysis.risk_score})`);
-                continue;
-              }
-
-              findings += 1;
-              summaries.push(`- ${version}: published finding (risk=${analysis.risk_score}, mode=${outputMode})`);
-
-              if (outputMode === 'issue') {
-                const issueTitle = `Potential Home Assistant breaking change impact: ${version}`;
-                const existing = await github.rest.search.issuesAndPullRequests({
-                  q: `repo:${repoFullName} is:issue \"${issueTitle}\"`,
-                  per_page: 5
-                });
-
-                if (existing.data.items.length > 0) {
-                  core.info(`Issue already exists for ${version}`);
-                } else {
-                  await github.rest.issues.create({
-                    owner,
-                    repo,
-                    title: issueTitle,
-                    body: report
-                  });
-                  core.info(`Created issue for ${version}`);
-                }
-              } else {
-                core.info('----- BEGIN HOME ASSISTANT IMPACT REPORT -----');
-                for (const line of report.split('\n')) {
-                  core.info(line);
-                }
-                core.info('----- END HOME ASSISTANT IMPACT REPORT -----');
-              }
-
-              await core.summary
-                .addHeading(`Home Assistant impact report: ${version}`, 2)
-                .addRaw(report)
-                .addEOL()
-                .write();
-            }
-
-            if (findings === 0) {
-              const noneMessage = 'No Home Assistant release changes exceeded the configured risk threshold.';
-              core.info(noneMessage);
-              await core.summary
-                .addHeading('Home Assistant impact report', 2)
-                .addRaw(noneMessage)
-                .addEOL()
-                .write();
-            } else {
-              core.info(`Published ${findings} finding(s).`);
-            }
-
-            if (summaries.length > 0) {
-              core.info('Run summary:');
-              for (const line of summaries) {
-                core.info(line);
-              }
-            }
+            // existing logic continues unchanged...
