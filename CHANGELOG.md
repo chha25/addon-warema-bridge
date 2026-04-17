@@ -1,48 +1,56 @@
 # Changelog
 
-Alle nennenswerten Änderungen an diesem Home Assistant Add-on werden in dieser Datei dokumentiert.
+All notable changes to this Home Assistant add-on are documented in this file.
+
+## 2.1.5
+
+- Fix #23: Updated the Home Assistant add-on build for the current BuildKit-based build process (`Dockerfile` as the single source of truth).
+- Fix #23: The add-on image now uses `ghcr.io/home-assistant/base:latest` directly, so the build no longer depends on an external `BUILD_FROM` argument.
+- Maintenance: Temporary native build tools are removed from the runtime image after `npm ci --omit=dev`.
+- Maintenance: Updated supported add-on architectures to `amd64` and `aarch64`.
+- Documentation: Added local test steps for the Home Assistant add-on image.
 
 ## 2.1.4
 
-- Wartung: Node.js-LTS-Ausrichtung auf aktuell unterstützte LTS-Linien (22/24, 24 empfohlen) inkl. CI-Matrix.
-- Wartung: Tooling-/Dokumentations-Updates (engines, `.nvmrc`, Standalone-Image, README).
-- Keine Änderungen an der Bridge-Laufzeitlogik.
+- Maintenance: Aligned Node.js LTS support with the currently supported LTS lines (22/24, 24 recommended), including the CI matrix.
+- Maintenance: Tooling and documentation updates (`engines`, `.nvmrc`, standalone image, README).
+- No changes to the bridge runtime logic.
 
 ## 2.1.3
 
-- Fix: Entferntes `CMD ["/init"]` im Add-on-Dockerfile, damit `/init` nicht als Unterprozess gestartet wird (Fehler `s6-overlay-suexec: fatal: can only run as pid 1`).
+- Fix: Removed `CMD ["/init"]` from the add-on Dockerfile so `/init` is not started as a subprocess (error: `s6-overlay-suexec: fatal: can only run as pid 1`).
 
 ## 2.1.2
 
-- Fix #14: Doppelstart beseitigt und Start auf Home-Assistant-Standard (`/init` + `services.d`) umgestellt.
-- Fix #14: HA-Restart-Recovery und MQTT-Topic-Handling für `warema/bridge/state` verbessert.
+- Fix #14: Removed duplicate startup and switched startup to the Home Assistant standard (`/init` + `services.d`).
+- Fix #14: Improved Home Assistant restart recovery and MQTT topic handling for `warema/bridge/state`.
 
 ## 2.1.1
 
-- Aktualisierung auf Node.js 20 (LTS) als Laufzeitbasis.
-- Verbesserte Home Assistant Add-on Kompatibilität und aktualisierte Add-on Metadaten.
-- Stabilitäts- und Logging-Verbesserungen für den Betrieb mit MQTT und WMS-USB-Stick.
+- Updated the runtime base to Node.js 20 (LTS).
+- Improved Home Assistant add-on compatibility and updated add-on metadata.
+- Stability and logging improvements for operation with MQTT and a WMS USB dongle.
 
 ## Unreleased
 
-- Fix #14: Doppelstart durch parallelen service.d-Start entfernt (run.sh wird nur noch einmal gestartet).
-- Fix #14: HA-Restart (`homeassistant/status=online`) setzt Registrierungen zurück, entfernt alte Blind-Registrierungen in der WMS-Library und publiziert Discovery erneut.
-- Fix #14: MQTT Discovery-Configs werden retained publiziert; Bridge-State wird bei Connect aktiv als retained `online` gesetzt.
-- Fix #14: `warema/bridge/state` wird nicht mehr als Gerätetopic interpretiert.
-- Fix #14: MQTT-Command-Subscriptions auf `warema/+/set`, `warema/+/set_position`, `warema/+/set_tilt` eingegrenzt, damit Bridge-Statusmeldungen nicht als Gerätekommando verarbeitet werden.
+- Fix #14: Removed duplicate startup caused by parallel `services.d` startup (`run.sh` is started only once).
+- Fix #14: Home Assistant restart (`homeassistant/status=online`) resets registrations, removes old blind registrations from the WMS library, and republishes discovery.
+- Fix #14: MQTT discovery configs are published as retained messages; bridge state is actively set to retained `online` on connect.
+- Fix #14: `warema/bridge/state` is no longer interpreted as a device topic.
+- Fix #14: MQTT command subscriptions are limited to `warema/+/set`, `warema/+/set_position`, and `warema/+/set_tilt`, so bridge status messages are not processed as device commands.
 
 ## 2.1.0
 
-- Überarbeitete Konfiguration für den Betrieb mit aktuellen Home Assistant Versionen.
-- Verbesserungen bei der Geräteerkennung und MQTT-Integration.
+- Revised configuration for operation with current Home Assistant versions.
+- Improvements to device discovery and MQTT integration.
 
 ## 2.0.0
 
-- Größere Modernisierung des Add-ons inklusive Architektur- und Laufzeitanpassungen.
-- Vorbereitung für Multi-Arch-Builds und robusteren Betrieb im Add-on Umfeld.
+- Major add-on modernization, including architecture and runtime adjustments.
+- Prepared for multi-architecture builds and more robust operation in the add-on environment.
 
-## Weitere Informationen
+## More Information
 
-Weitere Informationen, Quellcode und Support:
+More information, source code, and support:
 
 - GitHub: https://github.com/chha25/addon-warema-bridge
