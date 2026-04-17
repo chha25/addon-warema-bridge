@@ -21,6 +21,7 @@ permissions:
 jobs:
   detect-breaking-changes:
     runs-on: ubuntu-latest
+    environment: OpenAi
     env:
       RELEASE_NOTES_INDEX: https://www.home-assistant.io/blog/categories/release-notes/
       OPENAI_MODEL: gpt-5
@@ -121,7 +122,7 @@ jobs:
             const outputMode = ['console', 'issue'].includes(requestedOutputMode) ? requestedOutputMode : 'console';
 
             if (!openaiApiKey) {
-              core.setFailed('Missing repository secret OPENAI_API_KEY. Add it under Settings > Secrets and variables > Actions.');
+              core.setFailed('Missing repository or environment secret OPENAI_API_KEY. Add it under Settings > Environments > OpenAi > Secrets or repository Actions secrets.');
               return;
             }
 
