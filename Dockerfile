@@ -1,23 +1,24 @@
-ARG BUILD_FROM
-FROM $BUILD_FROM
+FROM ghcr.io/home-assistant/base:latest
 
-
-# Install requirements for add-on
+# Install runtime requirements for add-on and native build tooling for serial dependencies.
 RUN apk add --no-cache \
     nodejs \
     npm \
+    libstdc++ \
+  && apk add --no-cache --virtual .build-deps \
     python3 \
     make \
     g++ \
     linux-headers
 
-
-COPY warema-bridge/rootfs/srv/package-lock.json /srv
-COPY warema-bridge/rootfs/srv/package.json /srv
-
 WORKDIR /srv
 
-RUN npm ci --omit=dev
+COPY warema-bridge/rootfs/srv/package-lock.json ./
+COPY warema-bridge/rootfs/srv/package.json ./
+
+RUN npm ci --omit=dev \
+  && apk del --no-cache --purge .build-deps \
+  && rm -rf /root/.npm /root/.cache
 
 COPY warema-bridge/rootfs/ /
 

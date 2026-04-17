@@ -10,7 +10,7 @@ Diese Bridge bindet Warema-WMS-Geräte per MQTT in Home Assistant ein und ist mi
 - Kommunikation über MQTT (z. B. mit `core-mosquitto`).
 - Automatische Erkennung und Registrierung von Geräten.
 - Retained Discovery- und Availability-Topics für robustes Recovery nach Home-Assistant-Neustarts.
-- Unterstützung für mehrere Architekturen: `amd64`, `aarch64`, `armv7`, `armhf`.
+- Unterstützung für mehrere Architekturen: `amd64`, `aarch64`.
 - Konfigurierbar über Home-Assistant-Add-on-Optionen.
 - Serielle Verbindung zu einem WMS-USB-Stick.
 
@@ -75,6 +75,22 @@ Hinweise:
 - Falls dein Stick nicht unter `/dev/ttyUSB0` verfügbar ist, passe in `docker-compose.yml` sowohl `devices` als auch `WMS_SERIAL_PORT` an (z. B. `/dev/ttyACM0`).
 - Für Windows: [Verbinden von USB-Geräten](https://learn.microsoft.com/de-de/windows/wsl/connect-usb)
 
+#### Lokaler Test des Home-Assistant-Add-on-Images
+
+Nach Änderungen am `Dockerfile` kann das Home-Assistant-Add-on-Image lokal mit BuildKit geprüft werden:
+
+```sh
+docker buildx build --check .
+docker buildx build --load --tag addon-warema-bridge:local --platform linux/amd64 .
+docker run --rm --entrypoint node addon-warema-bridge:local --check /srv/bridge.js
+docker run --rm --entrypoint node addon-warema-bridge:local -e "require('serialport'); console.log('serialport ok')"
+docker run --rm --entrypoint sh addon-warema-bridge:local -c "command -v g++; command -v make"
+```
+
+Der letzte Befehl sollte keine Ausgabe erzeugen und mit Exit-Code `1` enden. Das ist erwartet und bestätigt, dass die Build-Werkzeuge `g++` und `make` nicht im fertigen Runtime-Image enthalten sind.
+
+Für ARM64 kann statt `linux/amd64` die Plattform `linux/aarch64` verwendet werden. Der vollständige Add-on-Start mit MQTT, `/data/options.json` und echtem USB-Stick sollte weiterhin in Home Assistant oder mit einer passenden lokalen Umgebung geprüft werden.
+
 #### Lokale Entwicklung
 
 1. Node.js 22 oder 24 LTS installieren (empfohlen: aktuellste 24.x) (`^22 || ^24`).
@@ -116,7 +132,7 @@ This bridge integrates Warema WMS devices into Home Assistant via MQTT and is co
 - MQTT communication (e.g. with `core-mosquitto`).
 - Automatic device discovery and registration.
 - Retained discovery and availability topics for robust Home Assistant restart recovery.
-- Multi-architecture support: `amd64`, `aarch64`, `armv7`, `armhf`.
+- Multi-architecture support: `amd64`, `aarch64`.
 - Configurable through Home Assistant add-on options.
 - Serial connection to a WMS USB dongle.
 
@@ -180,6 +196,22 @@ Notes:
 - Make sure `./mosquitto.conf` exists in the project folder (it is included in this repository).
 - If your dongle is not available at `/dev/ttyUSB0`, adjust both `devices` and `WMS_SERIAL_PORT` in `docker-compose.yml` (e.g. `/dev/ttyACM0`).
 - For Windows: [Connect USB devices](https://learn.microsoft.com/windows/wsl/connect-usb)
+
+#### Local Home Assistant add-on image test
+
+After changing the `Dockerfile`, the Home Assistant add-on image can be checked locally with BuildKit:
+
+```sh
+docker buildx build --check .
+docker buildx build --load --tag addon-warema-bridge:local --platform linux/amd64 .
+docker run --rm --entrypoint node addon-warema-bridge:local --check /srv/bridge.js
+docker run --rm --entrypoint node addon-warema-bridge:local -e "require('serialport'); console.log('serialport ok')"
+docker run --rm --entrypoint sh addon-warema-bridge:local -c "command -v g++; command -v make"
+```
+
+The last command should print nothing and exit with code `1`. This is expected and confirms that the build tools `g++` and `make` are not part of the final runtime image.
+
+For ARM64, use `linux/aarch64` instead of `linux/amd64`. The full add-on startup with MQTT, `/data/options.json`, and a real USB dongle should still be tested in Home Assistant or a matching local environment.
 
 #### Local development
 
