@@ -30,7 +30,6 @@ jobs:
     env:
       RELEASE_NOTES_INDEX: https://www.home-assistant.io/blog/categories/release-notes/
       DEVELOPER_BLOG_INDEX: https://developers.home-assistant.io/blog/
-      BUILDER_MIGRATION_POST: https://developers.home-assistant.io/blog/2026/04/02/builder-migration/
       GITHUB_MODELS_MODEL: openai/gpt-4.1-mini
       MIN_RISK_SCORE: '0.45'
       OUTPUT_MODE: console
@@ -42,7 +41,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build repository context
         id: ctx
@@ -117,7 +116,7 @@ jobs:
           PY
 
       - name: Analyze Home Assistant sources and publish results
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           GITHUB_TOKEN: ${{ github.token }}
           FILES: ${{ steps.ctx.outputs.files }}
@@ -282,12 +281,7 @@ jobs:
                   .filter((url) => /\/blog\/\d{4}\/\d{2}\/\d{2}\//.test(url))
               );
 
-              const prioritized = [
-                process.env.BUILDER_MIGRATION_POST,
-                ...candidateLinks.filter((url) => url !== process.env.BUILDER_MIGRATION_POST)
-              ];
-
-              return unique(prioritized).slice(0, maxDevPosts).map((url) => ({ type: 'developer_blog', url }));
+              return candidateLinks.slice(0, maxDevPosts).map((url) => ({ type: 'developer_blog', url }));
             };
 
             const itemIdFromUrl = (type, url) => {
@@ -333,27 +327,29 @@ jobs:
               const reasoning = finding.analysis.reasoning || [];
               const suggestions = finding.analysis.fix_suggestions || [];
               const checklist = finding.analysis.testing_checklist || [];
+              const todoItems = unique([
+                ...suggestions,
+                ...checklist
+              ]);
               return [
                 `### ${finding.title}`,
-                `- Source type: ${displaySourceType(finding.type)}`,
-                `- Source URL: ${finding.url}`,
-                `- Risk score: ${finding.analysis.risk_score}`,
-                `- Severity: ${finding.analysis.severity}`,
-                `- Confidence: ${finding.analysis.confidence}`,
                 '',
-                '**Summary**',
-                finding.analysis.summary,
+                '#### Kurzfassung',
+                `- Quelle: ${displaySourceType(finding.type)}`,
+                `- URL: ${finding.url}`,
+                `- Risiko: ${finding.analysis.risk_score} (${finding.analysis.severity}, confidence: ${finding.analysis.confidence})`,
+                `- Bewertung: ${finding.analysis.summary}`,
                 '',
-                '**Why this matters**',
+                '#### Warum relevant',
                 ...(reasoning.length ? reasoning.map((item) => `- ${item}`) : ['- No additional reasoning provided.']),
                 '',
-                '**Potential adjustments**',
-                ...(suggestions.length ? suggestions.map((item) => `- ${item}`) : ['- Review implementation and packaging against the source material.']),
+                '#### Vorgehensweise',
+                ...(suggestions.length ? suggestions.map((item, index) => `${index + 1}. ${item}`) : ['1. Review implementation and packaging against the source material.']),
                 '',
-                '**Testing checklist**',
-                ...(checklist.length ? checklist.map((item) => `- ${item}`) : ['- Verify install, startup, logs, and the main user flow.']),
+                '#### Todos',
+                ...(todoItems.length ? todoItems.map((item) => `- [ ] ${item}`) : ['- [ ] Verify install, startup, logs, and the main user flow.']),
                 '',
-                '**Matched excerpts**',
+                '#### Betroffene Aenderungen',
                 ...(matched.length ? matched.flatMap((item) => [`- **${item.title}**`, `  - Excerpt: ${item.excerpt || 'n/a'}`, `  - Impact: ${item.impact || 'n/a'}`]) : ['- No structured matched changes returned.']),
                 ''
               ].join('\n');
@@ -362,17 +358,28 @@ jobs:
             const renderOverviewMarkdown = (sources, findings) => {
               const releaseSources = sources.filter((item) => item.type === 'release_notes');
               const developerSources = sources.filter((item) => item.type === 'developer_blog');
+              const findingTodos = findings.map((finding) => `- [ ] Review ${finding.title} (${finding.analysis.severity}, risk ${finding.analysis.risk_score})`);
               return [
-                '## Analysis overview',
+                '## Kurzfassung',
                 '',
                 `- Repository: ${repoFullName}`,
                 `- Model: ${modelName}`,
                 `- Output mode: ${outputMode}`,
                 `- Risk threshold: ${minRiskScore}`,
-                `- Context size: ${contextChars} characters`,
-                `- Context files: ${files.length}`,
-                `- Sources checked: ${sources.length}`,
-                `- Findings above threshold: ${findings.length}`,
+                `- Gepruefte Quellen: ${sources.length}`,
+                `- Findings ueber Schwellenwert: ${findings.length}`,
+                `- Repository-Kontext: ${files.length} Dateien, ${contextChars} Zeichen`,
+                '',
+                '## Vorgehensweise',
+                '',
+                '1. Lade die aktuellen Home-Assistant-Release-Notes und Developer-Blog-Posts aus den Indexseiten.',
+                '2. Extrahiere relevante Abschnitte zu Add-ons, Supervisor, Packaging, Build-Pipeline, Frontend und APIs.',
+                '3. Vergleiche die Quellen mit dem Repository-Kontext und berechne Risiko, Severity und Confidence.',
+                '4. Erstelle nur Findings, deren Risiko den konfigurierten Schwellenwert erreicht.',
+                '',
+                '## Todos',
+                '',
+                ...(findingTodos.length ? findingTodos : ['- [x] Keine Findings oberhalb des Schwellenwerts.']),
                 '',
                 '### Release notes checked',
                 ...(releaseSources.length ? releaseSources.map((item) => `- ${item.url}`) : ['- None']),
@@ -535,7 +542,6 @@ jobs:
             if (findings.length) {
               for (const finding of findings) {
                 await core.summary
-                  .addHeading(`Finding: ${finding.title}`, 2)
                   .addRaw(renderFindingMarkdown(finding))
                   .addEOL()
                   .write();
