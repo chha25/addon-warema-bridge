@@ -151,10 +151,12 @@ const handleHomeAssistantOnline = () => {
 
 const buildAvailabilityTopic = (serialNumber) => `warema/${serialNumber}/availability`;
 const buildCoverConfigTopic = (serialNumber) => `homeassistant/cover/${serialNumber}/${serialNumber}/config`;
+const buildStateTopic = (serialNumber) => `warema/${serialNumber}/state`;
 
 const createBasePayload = (serialNumber) => ({
   name: serialNumber,
   availability: [{ topic: MQTT_TOPICS.bridgeState }, { topic: buildAvailabilityTopic(serialNumber) }],
+  availability_mode: 'all',
   unique_id: serialNumber,
 });
 
@@ -182,6 +184,12 @@ const createShadingPayload = (serialNumber, model, supportsTilt) => ({
   position_open: 0,
   position_closed: 100,
   command_topic: `warema/${serialNumber}/set`,
+  state_topic: buildStateTopic(serialNumber),
+  state_open: 'open',
+  state_opening: 'opening',
+  state_closed: 'closed',
+  state_closing: 'closing',
+  state_stopped: 'stopped',
   position_topic: `warema/${serialNumber}/position`,
   set_position_topic: `warema/${serialNumber}/set_position`,
   ...(supportsTilt
@@ -316,6 +324,45 @@ const handleWeatherBroadcast = (weather) => {
   publishWeatherDiscovery(weather);
 };
 
+const publishShadeState = (serialNumber, state) => {
+  client.publish(buildStateTopic(serialNumber), state);
+};
+
+const updateCachedShadeState = (serialNumber, nextState) => {
+  shadePosition[serialNumber] = {
+    ...shadePosition[serialNumber],
+    ...nextState,
+  };
+};
+
+const deriveStateFromPosition = (position) => {
+  if (position === 0) {
+    return 'open';
+  }
+
+  if (position === 100) {
+    return 'closed';
+  }
+
+  return 'stopped';
+};
+
+const deriveStateFromMovement = (previousPosition, nextPosition) => {
+  if (!Number.isFinite(previousPosition)) {
+    return deriveStateFromPosition(nextPosition);
+  }
+
+  if (nextPosition > previousPosition) {
+    return 'closing';
+  }
+
+  if (nextPosition < previousPosition) {
+    return 'opening';
+  }
+
+  return deriveStateFromPosition(nextPosition);
+};
+
 const handleBlindPositionUpdate = (payload) => {
   if (!payload || typeof payload.snr === 'undefined') {
     log('warning', 'Ignoring blind update without serial number');
@@ -328,13 +375,16 @@ const handleBlindPositionUpdate = (payload) => {
   }
 
   const serialNumber = payload.snr.toString();
+  const previousPosition = shadePosition[serialNumber]?.position;
+  const nextState = deriveStateFromMovement(previousPosition, payload.position);
   client.publish(`warema/${serialNumber}/position`, payload.position.toString());
   client.publish(`warema/${serialNumber}/tilt`, payload.angle.toString());
+  publishShadeState(serialNumber, nextState);
 
-  shadePosition[serialNumber] = {
+  updateCachedShadeState(serialNumber, {
     position: payload.position,
     angle: payload.angle,
-  };
+  });
 };
 
 function callback(err, msg) {
@@ -389,13 +439,18 @@ let stickUsb;
 const resolveCurrentPosition = (serialNumber) => shadePosition[serialNumber]?.position;
 const resolveCurrentAngle = (serialNumber) => shadePosition[serialNumber]?.angle;
 
-const handleSetCommand = (deviceId, command) => {
+const handleSetCommand = (serialNumber, deviceId, command) => {
   if (command === 'CLOSE') {
     stickUsb.vnBlindSetPosition(deviceId, 100);
+    updateCachedShadeState(serialNumber, { position: 100 });
+    publishShadeState(serialNumber, 'closing');
   } else if (command === 'OPEN') {
     stickUsb.vnBlindSetPosition(deviceId, 0);
+    updateCachedShadeState(serialNumber, { position: 0 });
+    publishShadeState(serialNumber, 'opening');
   } else if (command === 'STOP') {
     stickUsb.vnBlindStop(deviceId);
+    publishShadeState(serialNumber, deriveStateFromPosition(resolveCurrentPosition(serialNumber)));
   }
 };
 
@@ -429,26 +484,42 @@ const handleWaremaMessage = (topic, message) => {
 
   switch (command) {
     case 'set':
-      handleSetCommand(deviceId, stringMessage);
+      handleSetCommand(serialNumber, deviceId, stringMessage);
       break;
     case 'set_position': {
       const currentAngle = resolveCurrentAngle(serialNumber);
       const requestedPosition = parseNumericPayload(stringMessage, 0, 100);
-      if (currentAngle !== undefined && requestedPosition !== null) {
-        stickUsb.vnBlindSetPosition(deviceId, requestedPosition, Number.parseInt(currentAngle, 10));
-      } else if (requestedPosition === null) {
+      const currentPosition = resolveCurrentPosition(serialNumber);
+      if (requestedPosition === null) {
         log('warning', `Ignoring invalid position payload for ${serialNumber}: ${stringMessage}`);
+        break;
       }
+
+      if (currentAngle !== undefined) {
+        stickUsb.vnBlindSetPosition(deviceId, requestedPosition, Number.parseInt(currentAngle, 10));
+      } else {
+        stickUsb.vnBlindSetPosition(deviceId, requestedPosition);
+      }
+
+      updateCachedShadeState(serialNumber, { position: requestedPosition });
+      publishShadeState(serialNumber, deriveStateFromMovement(currentPosition, requestedPosition));
       break;
     }
     case 'set_tilt': {
       const currentPosition = resolveCurrentPosition(serialNumber);
       const requestedAngle = parseNumericPayload(stringMessage, -100, 100);
-      if (currentPosition !== undefined && requestedAngle !== null) {
-        stickUsb.vnBlindSetPosition(deviceId, Number.parseInt(currentPosition, 10), requestedAngle);
-      } else if (requestedAngle === null) {
+      if (requestedAngle === null) {
         log('warning', `Ignoring invalid tilt payload for ${serialNumber}: ${stringMessage}`);
+        break;
       }
+
+      if (currentPosition === undefined) {
+        log('warning', `Ignoring tilt payload for ${serialNumber} because current position is unknown`);
+        break;
+      }
+
+      stickUsb.vnBlindSetPosition(deviceId, Number.parseInt(currentPosition, 10), requestedAngle);
+      updateCachedShadeState(serialNumber, { angle: requestedAngle });
       break;
     }
     default:

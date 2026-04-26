@@ -70,6 +70,23 @@ describe('bridge.js', () => {
     expect(stickUsbMock.vnBlindAdd).toHaveBeenCalledWith(12345, '12345');
   });
 
+  test('registerDevice should publish MQTT cover discovery with state and strict availability', () => {
+    registerDevice({ snr: 12345, type: 25 });
+
+    const discoveryCall = clientMock.publish.mock.calls.find(
+      ([topic]) => topic === 'homeassistant/cover/12345/12345/config'
+    );
+    const payload = JSON.parse(discoveryCall[1]);
+
+    expect(payload.availability_mode).toBe('all');
+    expect(payload.state_topic).toBe('warema/12345/state');
+    expect(payload.state_open).toBe('open');
+    expect(payload.state_opening).toBe('opening');
+    expect(payload.state_closed).toBe('closed');
+    expect(payload.state_closing).toBe('closing');
+    expect(payload.state_stopped).toBe('stopped');
+  });
+
   test('registerDevice should ignore device in ignoredDevices', () => {
     setupBridge({ ignoredDevices: '12345' });
     const element = { snr: 12345, type: 25 };
@@ -114,6 +131,21 @@ describe('bridge.js', () => {
     callback(null, msg);
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/position', '50');
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/tilt', '10');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'stopped');
+  });
+
+  test('callback should publish movement state from position updates', () => {
+    callback(null, {
+      topic: 'wms-vb-blind-position-update',
+      payload: { snr: 12345, position: 80, angle: 10 }
+    });
+
+    callback(null, {
+      topic: 'wms-vb-blind-position-update',
+      payload: { snr: 12345, position: 40, angle: 10 }
+    });
+
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'opening');
   });
 
   test('callback should handle wms-vb-rcv-weather-broadcast for new station', () => {
@@ -177,14 +209,23 @@ describe('bridge.js', () => {
     });
     handlers.message('warema/12345/set', Buffer.from('CLOSE'));
     expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 100);
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'closing');
     handlers.message('warema/12345/set', Buffer.from('OPEN'));
     expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 0);
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'opening');
     handlers.message('warema/12345/set', Buffer.from('STOP'));
     expect(stickUsbMock.vnBlindStop).toHaveBeenCalledWith(12345);
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'open');
     handlers.message('warema/12345/set_position', Buffer.from('55'));
     expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 55, 30);
     handlers.message('warema/12345/set_tilt', Buffer.from('10'));
-    expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 20, 10);
+    expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 55, 10);
+  });
+
+  test('message handler should allow set_position without a cached tilt value', () => {
+    handlers.message('warema/12345/set_position', Buffer.from('55'));
+
+    expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 55);
   });
 
   test('message handler should rescan when homeassistant online', () => {

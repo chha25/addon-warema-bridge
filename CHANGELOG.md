@@ -2,6 +2,13 @@
 
 All notable changes to this Home Assistant add-on are documented in this file.
 
+## 2.1.6
+
+- MQTT Cover: Added `state_topic` discovery for covers, including `open`, `opening`, `closed`, `closing`, and `stopped` states for better Home Assistant compatibility.
+- MQTT Cover: Set `availability_mode` to `all` when publishing multiple availability topics, so bridge and device availability are evaluated consistently.
+- MQTT runtime: Improved command handling so `set_position` still works without a cached tilt value and state updates are published more reliably during movement.
+- Tests: Expanded Jest coverage for MQTT discovery payloads, movement state publishing, and command fallback behavior.
+
 ## 2.1.5
 
 - Fix #23: Updated the Home Assistant add-on build for the current BuildKit-based build process (`Dockerfile` as the single source of truth).
