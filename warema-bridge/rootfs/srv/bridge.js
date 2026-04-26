@@ -169,9 +169,9 @@ const createBaseDevice = (serialNumber) => ({
 const createTiltConfig = () => ({
   tilt_status_topic: 'tilt',
   tilt_command_topic: 'set_tilt',
-  tilt_closed_value: -100,
+  tilt_closed_value: 0,
   tilt_opened_value: 100,
-  tilt_min: -100,
+  tilt_min: 0,
   tilt_max: 100,
 });
 
@@ -181,8 +181,9 @@ const createShadingPayload = (serialNumber, model, supportsTilt) => ({
     ...createBaseDevice(serialNumber),
     model,
   },
-  position_open: 0,
-  position_closed: 100,
+  device_class: 'blind',
+  position_open: 100,
+  position_closed: 0,
   command_topic: `warema/${serialNumber}/set`,
   state_topic: buildStateTopic(serialNumber),
   state_open: 'open',
@@ -328,6 +329,18 @@ const publishShadeState = (serialNumber, state) => {
   client.publish(buildStateTopic(serialNumber), state);
 };
 
+const clampPercentage = (value) => Math.max(0, Math.min(100, value));
+
+// Home Assistant/Matter expect 0 = closed and 100 = open. Warema uses the
+// opposite direction internally for lift position.
+const waremaPositionToHa = (position) => clampPercentage(100 - position);
+const haPositionToWarema = (position) => clampPercentage(100 - position);
+
+// Warema tilt angles are -100..100, while MQTT cover tilt is normalized to
+// 0..100 for Matter-compatible lift+tilt window coverings.
+const waremaTiltToHa = (angle) => clampPercentage(Math.round((angle + 100) / 2));
+const haTiltToWarema = (tilt) => clampPercentage(tilt) * 2 - 100;
+
 const updateCachedShadeState = (serialNumber, nextState) => {
   shadePosition[serialNumber] = {
     ...shadePosition[serialNumber],
@@ -377,8 +390,8 @@ const handleBlindPositionUpdate = (payload) => {
   const serialNumber = payload.snr.toString();
   const previousPosition = shadePosition[serialNumber]?.position;
   const nextState = deriveStateFromMovement(previousPosition, payload.position);
-  client.publish(`warema/${serialNumber}/position`, payload.position.toString());
-  client.publish(`warema/${serialNumber}/tilt`, payload.angle.toString());
+  client.publish(`warema/${serialNumber}/position`, waremaPositionToHa(payload.position).toString());
+  client.publish(`warema/${serialNumber}/tilt`, waremaTiltToHa(payload.angle).toString());
   publishShadeState(serialNumber, nextState);
 
   updateCachedShadeState(serialNumber, {
@@ -488,13 +501,14 @@ const handleWaremaMessage = (topic, message) => {
       break;
     case 'set_position': {
       const currentAngle = resolveCurrentAngle(serialNumber);
-      const requestedPosition = parseNumericPayload(stringMessage, 0, 100);
+      const requestedHaPosition = parseNumericPayload(stringMessage, 0, 100);
       const currentPosition = resolveCurrentPosition(serialNumber);
-      if (requestedPosition === null) {
+      if (requestedHaPosition === null) {
         log('warning', `Ignoring invalid position payload for ${serialNumber}: ${stringMessage}`);
         break;
       }
 
+      const requestedPosition = haPositionToWarema(requestedHaPosition);
       if (currentAngle !== undefined) {
         stickUsb.vnBlindSetPosition(deviceId, requestedPosition, Number.parseInt(currentAngle, 10));
       } else {
@@ -507,8 +521,8 @@ const handleWaremaMessage = (topic, message) => {
     }
     case 'set_tilt': {
       const currentPosition = resolveCurrentPosition(serialNumber);
-      const requestedAngle = parseNumericPayload(stringMessage, -100, 100);
-      if (requestedAngle === null) {
+      const requestedHaTilt = parseNumericPayload(stringMessage, 0, 100);
+      if (requestedHaTilt === null) {
         log('warning', `Ignoring invalid tilt payload for ${serialNumber}: ${stringMessage}`);
         break;
       }
@@ -518,6 +532,7 @@ const handleWaremaMessage = (topic, message) => {
         break;
       }
 
+      const requestedAngle = haTiltToWarema(requestedHaTilt);
       stickUsb.vnBlindSetPosition(deviceId, Number.parseInt(currentPosition, 10), requestedAngle);
       updateCachedShadeState(serialNumber, { angle: requestedAngle });
       break;

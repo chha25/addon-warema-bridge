@@ -79,12 +79,33 @@ describe('bridge.js', () => {
     const payload = JSON.parse(discoveryCall[1]);
 
     expect(payload.availability_mode).toBe('all');
+    expect(payload.device_class).toBe('blind');
+    expect(payload.position_open).toBe(100);
+    expect(payload.position_closed).toBe(0);
     expect(payload.state_topic).toBe('warema/12345/state');
     expect(payload.state_open).toBe('open');
     expect(payload.state_opening).toBe('opening');
     expect(payload.state_closed).toBe('closed');
     expect(payload.state_closing).toBe('closing');
     expect(payload.state_stopped).toBe('stopped');
+    expect(payload.tilt_status_topic).toBeUndefined();
+    expect(payload.tilt_command_topic).toBeUndefined();
+  });
+
+  test('registerDevice should publish normalized tilt discovery only for tilt-capable covers', () => {
+    registerDevice({ snr: 12345, type: 20 });
+
+    const discoveryCall = clientMock.publish.mock.calls.find(
+      ([topic]) => topic === 'homeassistant/cover/12345/12345/config'
+    );
+    const payload = JSON.parse(discoveryCall[1]);
+
+    expect(payload.tilt_status_topic).toBe('warema/12345/tilt');
+    expect(payload.tilt_command_topic).toBe('warema/12345/set_tilt');
+    expect(payload.tilt_min).toBe(0);
+    expect(payload.tilt_max).toBe(100);
+    expect(payload.tilt_closed_value).toBe(0);
+    expect(payload.tilt_opened_value).toBe(100);
   });
 
   test('registerDevice should ignore device in ignoredDevices', () => {
@@ -130,8 +151,26 @@ describe('bridge.js', () => {
     const msg = { topic: 'wms-vb-blind-position-update', payload: { snr: 12345, position: 50, angle: 10 } };
     callback(null, msg);
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/position', '50');
-    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/tilt', '10');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/tilt', '55');
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'stopped');
+  });
+
+  test('callback should normalize Warema position and tilt values for MQTT', () => {
+    callback(null, {
+      topic: 'wms-vb-blind-position-update',
+      payload: { snr: 12345, position: 0, angle: -100 }
+    });
+
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/position', '100');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/tilt', '0');
+
+    callback(null, {
+      topic: 'wms-vb-blind-position-update',
+      payload: { snr: 12345, position: 100, angle: 100 }
+    });
+
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/position', '0');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/tilt', '100');
   });
 
   test('callback should publish movement state from position updates', () => {
@@ -217,15 +256,15 @@ describe('bridge.js', () => {
     expect(stickUsbMock.vnBlindStop).toHaveBeenCalledWith(12345);
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'open');
     handlers.message('warema/12345/set_position', Buffer.from('55'));
-    expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 55, 30);
+    expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 45, 30);
     handlers.message('warema/12345/set_tilt', Buffer.from('10'));
-    expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 55, 10);
+    expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 45, -80);
   });
 
   test('message handler should allow set_position without a cached tilt value', () => {
     handlers.message('warema/12345/set_position', Buffer.from('55'));
 
-    expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 55);
+    expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 45);
   });
 
   test('message handler should rescan when homeassistant online', () => {
@@ -251,8 +290,7 @@ describe('bridge.js', () => {
     handlers.message('warema/12345/set_position', Buffer.from('200'));
     handlers.message('warema/12345/set_tilt', Buffer.from('-101'));
 
-    expect(stickUsbMock.vnBlindSetPosition).not.toHaveBeenCalledWith(12345, 200, 30);
-    expect(stickUsbMock.vnBlindSetPosition).not.toHaveBeenCalledWith(12345, 20, -101);
+    expect(stickUsbMock.vnBlindSetPosition).not.toHaveBeenCalled();
   });
 
   test('message handler should ignore invalid serial topic', () => {
