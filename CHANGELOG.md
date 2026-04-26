@@ -2,6 +2,16 @@
 
 All notable changes to this Home Assistant add-on are documented in this file.
 
+## 3.0.0
+
+- Breaking: MQTT cover position values now use Home Assistant/Matter semantics (`0 = closed`, `100 = open`) instead of Warema's internal direction.
+- Breaking: MQTT cover tilt values now use the normalized Home Assistant/Matter range (`0..100`) instead of Warema's internal `-100..100` angle range.
+- MQTT Cover: Added `device_class: blind` to shading discovery payloads so Raffstores are exposed as lift + tilt capable blinds.
+- MQTT Cover: Updated discovery metadata to publish `position_open: 100`, `position_closed: 0`, `tilt_min: 0`, `tilt_max: 100`, `tilt_closed_value: 0`, and `tilt_opened_value: 100`.
+- MQTT runtime: Added bidirectional mapping so Warema API calls still receive the expected internal position and tilt values while Home Assistant/Matter sees normalized values.
+- Compatibility: Existing MQTT topic names remain unchanged, but automations that read or write raw `position`, `tilt`, `set_position`, or `set_tilt` values may need to be updated.
+- Note: If Home Assistant or Matter Hub keeps using stale entity metadata, delete the retained MQTT discovery message and restart the add-on to republish discovery.
+
 ## 2.1.6
 
 - MQTT Cover: Added `state_topic` discovery for covers, including `open`, `opening`, `closed`, `closing`, and `stopped` states for better Home Assistant compatibility.
