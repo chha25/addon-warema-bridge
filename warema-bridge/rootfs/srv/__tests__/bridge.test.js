@@ -241,6 +241,18 @@ describe('bridge.js', () => {
     );
   });
 
+  test('connect handler should not reinitialize stick on MQTT reconnect', () => {
+    const WaremaWmsVenetianBlinds = require('warema-wms-venetian-blinds').WaremaWmsVenetianBlinds;
+
+    expect(WaremaWmsVenetianBlinds).toHaveBeenCalledTimes(1);
+
+    handlers.connect();
+
+    expect(WaremaWmsVenetianBlinds).toHaveBeenCalledTimes(1);
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/bridge/state', 'online', { retain: true });
+    expect(clientMock.subscribe).toHaveBeenCalledWith('warema/+/set');
+  });
+
   test('message handler should control blinds', () => {
     callback(null, {
       topic: 'wms-vb-blind-position-update',

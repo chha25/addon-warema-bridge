@@ -2,6 +2,11 @@
 
 All notable changes to this Home Assistant add-on are documented in this file.
 
+## 3.0.1
+
+- Fix #30: Keep the existing WMS USB stick instance across MQTT reconnects so the serial connection is not reinitialized repeatedly.
+- Diagnostics: Added MQTT lifecycle, WMS stick initialization/reuse, command, and WMS command-result logging to improve debugging of intermittent move timeouts.
+
 ## 3.0.0
 
 - Breaking: MQTT cover position values now use Home Assistant/Matter semantics (`0 = closed`, `100 = open`) instead of Warema's internal direction.

@@ -118,6 +118,7 @@ const settingsPar = {
 const registeredShades = new Set();
 const registeredBlindsInLibrary = new Set();
 const shadePosition = {};
+let mqttConnectCount = 0;
 
 const resetLocalRegistrationState = () => {
   registeredShades.clear();
@@ -390,6 +391,10 @@ const handleBlindPositionUpdate = (payload) => {
   const serialNumber = payload.snr.toString();
   const previousPosition = shadePosition[serialNumber]?.position;
   const nextState = deriveStateFromMovement(previousPosition, payload.position);
+  log(
+    'trace',
+    `Blind ${serialNumber} position update: position=${payload.position}, angle=${payload.angle}, state=${nextState}`,
+  );
   client.publish(`warema/${serialNumber}/position`, waremaPositionToHa(payload.position).toString());
   client.publish(`warema/${serialNumber}/tilt`, waremaTiltToHa(payload.angle).toString());
   publishShadeState(serialNumber, nextState);
@@ -398,6 +403,20 @@ const handleBlindPositionUpdate = (payload) => {
     position: payload.position,
     angle: payload.angle,
   });
+};
+
+const handleWmsCommandResult = (msg) => {
+  const payload = msg.payload || {};
+  const serialNumber = payload.snr || payload.snrHex || 'unknown';
+  const error = payload.error;
+  const message = `WMS command result ${msg.topic} for ${serialNumber}: ${JSON.stringify(payload)}`;
+
+  if (error) {
+    log('warning', message);
+    return;
+  }
+
+  log('debug', message);
 };
 
 function callback(err, msg) {
@@ -409,9 +428,11 @@ function callback(err, msg) {
     return;
   }
 
+  log('trace', `WMS callback message: ${JSON.stringify(msg)}`);
+
   switch (msg.topic) {
     case 'wms-vb-init-completion':
-      log('info', 'Warema init completed');
+      log('info', `Warema init completed: ${JSON.stringify(msg.payload || {})}`);
       registerDevices();
       stickUsb.setPosUpdInterval(POSITION_UPDATE_INTERVAL_MS);
       break;
@@ -422,6 +443,11 @@ function callback(err, msg) {
       break;
     case 'wms-vb-blind-position-update':
       handleBlindPositionUpdate(msg.payload);
+      break;
+    case 'wms-vb-cmd-result-set-position':
+    case 'wms-vb-cmd-result-get-position':
+    case 'wms-vb-cmd-result-stop':
+      handleWmsCommandResult(msg);
       break;
     case 'wms-vb-scanned-devices':
       log('info', 'Scanned devices.');
@@ -452,18 +478,45 @@ let stickUsb;
 const resolveCurrentPosition = (serialNumber) => shadePosition[serialNumber]?.position;
 const resolveCurrentAngle = (serialNumber) => shadePosition[serialNumber]?.angle;
 
+const ensureStickInitialized = () => {
+  if (stickUsb) {
+    const status = typeof stickUsb.getStatus === 'function' ? stickUsb.getStatus() : undefined;
+    log('debug', `WMS stick already initialized; keeping existing serial connection (${JSON.stringify(status || {})})`);
+    return;
+  }
+
+  log(
+    'info',
+    `Initializing WMS stick on ${settingsPar.wmsSerialPort} (channel ${settingsPar.wmsChannel}, panid ${settingsPar.wmsPanid})`,
+  );
+
+  stickUsb = new WaremaWmsVenetianBlinds(
+    settingsPar.wmsSerialPort,
+    settingsPar.wmsChannel,
+    settingsPar.wmsPanid,
+    settingsPar.wmsKey,
+    {},
+    callback,
+  );
+};
+
 const handleSetCommand = (serialNumber, deviceId, command) => {
   if (command === 'CLOSE') {
+    log('debug', `Command CLOSE for ${serialNumber}: setting Warema position 100`);
     stickUsb.vnBlindSetPosition(deviceId, 100);
     updateCachedShadeState(serialNumber, { position: 100 });
     publishShadeState(serialNumber, 'closing');
   } else if (command === 'OPEN') {
+    log('debug', `Command OPEN for ${serialNumber}: setting Warema position 0`);
     stickUsb.vnBlindSetPosition(deviceId, 0);
     updateCachedShadeState(serialNumber, { position: 0 });
     publishShadeState(serialNumber, 'opening');
   } else if (command === 'STOP') {
+    log('debug', `Command STOP for ${serialNumber}`);
     stickUsb.vnBlindStop(deviceId);
     publishShadeState(serialNumber, deriveStateFromPosition(resolveCurrentPosition(serialNumber)));
+  } else {
+    log('warning', `Ignoring unsupported set command for ${serialNumber}: ${command}`);
   }
 };
 
@@ -489,6 +542,7 @@ const handleWaremaMessage = (topic, message) => {
   }
 
   const stringMessage = message.toString().trim().toUpperCase();
+  log('trace', `MQTT command received on ${topic}: ${stringMessage}`);
 
   if (stringMessage.length > MQTT_PAYLOAD_LIMIT) {
     log('warning', `Ignoring oversized MQTT payload (${stringMessage.length} bytes) on ${topic}`);
@@ -509,6 +563,10 @@ const handleWaremaMessage = (topic, message) => {
       }
 
       const requestedPosition = haPositionToWarema(requestedHaPosition);
+      log(
+        'debug',
+        `Command set_position for ${serialNumber}: HA=${requestedHaPosition}, Warema=${requestedPosition}, currentAngle=${currentAngle}`,
+      );
       if (currentAngle !== undefined) {
         stickUsb.vnBlindSetPosition(deviceId, requestedPosition, Number.parseInt(currentAngle, 10));
       } else {
@@ -533,6 +591,10 @@ const handleWaremaMessage = (topic, message) => {
       }
 
       const requestedAngle = haTiltToWarema(requestedHaTilt);
+      log(
+        'debug',
+        `Command set_tilt for ${serialNumber}: HA=${requestedHaTilt}, Warema=${requestedAngle}, currentPosition=${currentPosition}`,
+      );
       stickUsb.vnBlindSetPosition(deviceId, Number.parseInt(currentPosition, 10), requestedAngle);
       updateCachedShadeState(serialNumber, { angle: requestedAngle });
       break;
@@ -543,25 +605,30 @@ const handleWaremaMessage = (topic, message) => {
 };
 
 client.on('connect', () => {
-  log('info', `Connected to MQTT (log level: ${activeLogLevel})`);
+  mqttConnectCount += 1;
+  log('info', `Connected to MQTT (log level: ${activeLogLevel}, connect count: ${mqttConnectCount})`);
   client.publish(MQTT_TOPICS.bridgeState, 'online', { retain: true });
   client.subscribe(MQTT_TOPICS.waremaSetCommand);
   client.subscribe(MQTT_TOPICS.waremaSetPositionCommand);
   client.subscribe(MQTT_TOPICS.waremaSetTiltCommand);
   client.subscribe(MQTT_TOPICS.homeAssistantStatus);
-
-  stickUsb = new WaremaWmsVenetianBlinds(
-    settingsPar.wmsSerialPort,
-    settingsPar.wmsChannel,
-    settingsPar.wmsPanid,
-    settingsPar.wmsKey,
-    {},
-    callback,
-  );
+  ensureStickInitialized();
 });
 
 client.on('error', (error) => {
   log('error', `MQTT Error: ${error.toString()}`);
+});
+
+client.on('reconnect', () => {
+  log('warning', 'MQTT reconnecting');
+});
+
+client.on('close', () => {
+  log('warning', 'MQTT connection closed');
+});
+
+client.on('offline', () => {
+  log('warning', 'MQTT client offline');
 });
 
 client.on('message', (topic, message) => {
@@ -581,4 +648,5 @@ module.exports = {
   registerDevice,
   registerDevices,
   callback,
+  ensureStickInitialized,
 };
