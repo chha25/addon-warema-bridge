@@ -23,6 +23,12 @@ const DEVICE_TYPES = {
   PLUG_RECEIVER: 20,
   ACTUATOR_UP: 21,
   VERTICAL_AWNING: 25,
+  WEATHER_STATION_PRO: 63,
+};
+
+const DEVICE_CATEGORIES = {
+  SHADE: 'shade',
+  WEATHER: 'weather',
 };
 
 const POSITION_UPDATE_INTERVAL_MS = 30000;
@@ -116,12 +122,14 @@ const settingsPar = {
 };
 
 const registeredShades = new Set();
+const registeredWeatherStations = new Set();
 const registeredBlindsInLibrary = new Set();
 const shadePosition = {};
 let mqttConnectCount = 0;
 
 const resetLocalRegistrationState = () => {
   registeredShades.clear();
+  registeredWeatherStations.clear();
   registeredBlindsInLibrary.clear();
   Object.keys(shadePosition).forEach((serialNumber) => {
     delete shadePosition[serialNumber];
@@ -152,6 +160,13 @@ const handleHomeAssistantOnline = () => {
 
 const buildAvailabilityTopic = (serialNumber) => `warema/${serialNumber}/availability`;
 const buildCoverConfigTopic = (serialNumber) => `homeassistant/cover/${serialNumber}/${serialNumber}/config`;
+const buildSensorConfigTopic = (serialNumber, sensorName) => (
+  `homeassistant/sensor/${serialNumber}/${sensorName}/config`
+);
+const buildBinarySensorConfigTopic = (serialNumber, sensorName) => (
+  `homeassistant/binary_sensor/${serialNumber}/${sensorName}/config`
+);
+const buildWeatherStateTopic = (serialNumber, sensorName) => `warema/${serialNumber}/${sensorName}/state`;
 const buildStateTopic = (serialNumber) => `warema/${serialNumber}/state`;
 
 const createBasePayload = (serialNumber) => ({
@@ -209,23 +224,17 @@ const createShadingPayload = (serialNumber, model, supportsTilt) => ({
 const getPayloadByDeviceType = (serialNumber, type) => {
   switch (Number(type)) {
     case DEVICE_TYPES.WEATHER_STATION:
-      return {
-        payload: {
-          ...createBasePayload(serialNumber),
-          device: {
-            ...createBaseDevice(serialNumber),
-            model: 'Weather station',
-          },
-        },
-      };
+      return { category: DEVICE_CATEGORIES.WEATHER, model: 'Weather Station' };
     case DEVICE_TYPES.WEBCONTROL_PRO:
       return null;
+    case DEVICE_TYPES.WEATHER_STATION_PRO:
+      return { category: DEVICE_CATEGORIES.WEATHER, model: 'Weather Station Pro' };
     case DEVICE_TYPES.PLUG_RECEIVER:
-      return { payload: createShadingPayload(serialNumber, 'Plug receiver', true) };
+      return { category: DEVICE_CATEGORIES.SHADE, payload: createShadingPayload(serialNumber, 'Plug receiver', true) };
     case DEVICE_TYPES.ACTUATOR_UP:
-      return { payload: createShadingPayload(serialNumber, 'Actuator UP', true) };
+      return { category: DEVICE_CATEGORIES.SHADE, payload: createShadingPayload(serialNumber, 'Actuator UP', true) };
     case DEVICE_TYPES.VERTICAL_AWNING:
-      return { payload: createShadingPayload(serialNumber, 'Vertical awning', false) };
+      return { category: DEVICE_CATEGORIES.SHADE, payload: createShadingPayload(serialNumber, 'Vertical awning', false) };
     default:
       log('warning', `Unrecognized device type: ${type}`);
       return null;
@@ -241,7 +250,6 @@ const registerShade = (serialNumber) => {
 
 function registerDevice(element) {
   const serialNumber = element.snr.toString();
-  const configTopic = buildCoverConfigTopic(serialNumber);
 
   log('debug', `Registering ${serialNumber}`);
 
@@ -250,14 +258,24 @@ function registerDevice(element) {
     return;
   }
 
-  if (ignoredDevices.includes(serialNumber)) {
-    log('info', `Ignoring and removing device ${serialNumber} (type ${element.type})`);
+  const isIgnored = ignoredDevices.includes(serialNumber);
+  if (isIgnored) {
+    log('info', `Ignoring device ${serialNumber} (type ${element.type})`);
   } else {
     log('info', `Adding device ${serialNumber} (type ${element.type})`);
-    registerShade(serialNumber);
   }
 
-  client.publish(configTopic, JSON.stringify(deviceConfig.payload), { retain: true });
+  if (deviceConfig.category === DEVICE_CATEGORIES.WEATHER) {
+    if (!isIgnored) {
+      publishWeatherDiscovery({ snr: serialNumber }, deviceConfig.model);
+    }
+    return;
+  }
+
+  if (!isIgnored) {
+    registerShade(serialNumber);
+  }
+  client.publish(buildCoverConfigTopic(serialNumber), JSON.stringify(deviceConfig.payload), { retain: true });
 }
 
 function registerDevices() {
@@ -272,58 +290,104 @@ function registerDevices() {
   stickUsb.scanDevices({ autoAssignBlinds: false });
 }
 
-const publishWeatherDiscovery = (weather) => {
+const WEATHER_SENSORS = [
+  {
+    name: 'illuminance',
+    component: 'sensor',
+    stateKey: 'lumen',
+    deviceClass: 'illuminance',
+    unitOfMeasurement: 'lx',
+  },
+  {
+    name: 'temperature',
+    component: 'sensor',
+    stateKey: 'temp',
+    deviceClass: 'temperature',
+    unitOfMeasurement: '°C',
+  },
+  {
+    name: 'wind_speed',
+    component: 'sensor',
+    stateKey: 'wind',
+    deviceClass: 'wind_speed',
+    unitOfMeasurement: 'm/s',
+  },
+  {
+    name: 'rain',
+    component: 'binary_sensor',
+    stateKey: 'rain',
+    deviceClass: 'moisture',
+  },
+];
+
+const buildWeatherDiscoveryTopic = (serialNumber, sensor) => (
+  sensor.component === 'binary_sensor'
+    ? buildBinarySensorConfigTopic(serialNumber, sensor.name)
+    : buildSensorConfigTopic(serialNumber, sensor.name)
+);
+
+const createWeatherSensorPayload = (serialNumber, sensor, basePayload) => ({
+  ...basePayload,
+  state_topic: buildWeatherStateTopic(serialNumber, sensor.name),
+  device_class: sensor.deviceClass,
+  unique_id: `${serialNumber}_${sensor.name}`,
+  ...(sensor.unitOfMeasurement ? { unit_of_measurement: sensor.unitOfMeasurement } : {}),
+  ...(sensor.component === 'sensor' ? { state_class: 'measurement' } : {}),
+  ...(sensor.component === 'binary_sensor' ? { payload_on: 'ON', payload_off: 'OFF' } : {}),
+});
+
+const publishWeatherDiscovery = (weather, model = 'Weather Station') => {
   const serialNumber = weather.snr.toString();
   const availabilityTopic = buildAvailabilityTopic(serialNumber);
   const basePayload = {
-    name: serialNumber,
-    availability: [{ topic: MQTT_TOPICS.bridgeState }, { topic: availabilityTopic }],
+    ...createBasePayload(serialNumber),
     device: {
-      identifiers: serialNumber,
-      manufacturer: 'Warema',
-      model: 'Weather Station',
-      name: serialNumber,
+      ...createBaseDevice(serialNumber),
+      model,
     },
     force_update: true,
   };
 
-  client.publish(
-    `homeassistant/sensor/${serialNumber}/illuminance/config`,
-    JSON.stringify({
-      ...basePayload,
-      state_topic: `warema/${serialNumber}/illuminance/state`,
-      device_class: 'illuminance',
-      unique_id: `${serialNumber}_illuminance`,
-      unit_of_measurement: 'lm',
-    }),
-    { retain: true },
-  );
-
-  client.publish(
-    `homeassistant/sensor/${serialNumber}/temperature/config`,
-    JSON.stringify({
-      ...basePayload,
-      state_topic: `warema/${serialNumber}/temperature/state`,
-      device_class: 'temperature',
-      unique_id: `${serialNumber}_temperature`,
-      unit_of_measurement: 'C',
-    }),
-    { retain: true },
-  );
+  WEATHER_SENSORS.forEach((sensor) => {
+    client.publish(
+      buildWeatherDiscoveryTopic(serialNumber, sensor),
+      JSON.stringify(createWeatherSensorPayload(serialNumber, sensor, basePayload)),
+      { retain: true },
+    );
+  });
 
   client.publish(availabilityTopic, 'online', { retain: true });
-  registeredShades.add(serialNumber);
+  registeredWeatherStations.add(serialNumber);
+};
+
+const normalizeWeatherValue = (sensor, value) => {
+  if (sensor.component === 'binary_sensor') {
+    return value ? 'ON' : 'OFF';
+  }
+
+  return value.toString();
+};
+
+const publishWeatherStates = (serialNumber, weather) => {
+  WEATHER_SENSORS.forEach((sensor) => {
+    if (typeof weather[sensor.stateKey] === 'undefined' || weather[sensor.stateKey] === null) {
+      return;
+    }
+
+    client.publish(
+      buildWeatherStateTopic(serialNumber, sensor.name),
+      normalizeWeatherValue(sensor, weather[sensor.stateKey]),
+    );
+  });
 };
 
 const handleWeatherBroadcast = (weather) => {
   const serialNumber = weather.snr.toString();
-  if (registeredShades.has(serialNumber)) {
-    client.publish(`warema/${serialNumber}/illuminance/state`, weather.lumen.toString());
-    client.publish(`warema/${serialNumber}/temperature/state`, weather.temp.toString());
-    return;
+  if (!registeredWeatherStations.has(serialNumber)) {
+    publishWeatherDiscovery(weather);
   }
 
-  publishWeatherDiscovery(weather);
+  publishWeatherStates(serialNumber, weather);
 };
 
 const publishShadeState = (serialNumber, state) => {
