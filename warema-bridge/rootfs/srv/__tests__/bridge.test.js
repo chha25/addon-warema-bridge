@@ -190,7 +190,7 @@ describe('bridge.js', () => {
   test('callback should handle wms-vb-rcv-weather-broadcast for new station', () => {
     const msg = {
       topic: 'wms-vb-rcv-weather-broadcast',
-      payload: { weather: { snr: 999, lumen: 123, temp: 24 } }
+      payload: { weather: { snr: 999, lumen: 123, temp: 24, wind: 4, rain: false } }
     };
     callback(null, msg);
     expect(clientMock.publish).toHaveBeenCalledWith(
@@ -203,7 +203,46 @@ describe('bridge.js', () => {
       expect.any(String),
       { retain: true }
     );
+    expect(clientMock.publish).toHaveBeenCalledWith(
+      'homeassistant/sensor/999/wind_speed/config',
+      expect.any(String),
+      { retain: true }
+    );
+    expect(clientMock.publish).toHaveBeenCalledWith(
+      'homeassistant/binary_sensor/999/rain/config',
+      expect.any(String),
+      { retain: true }
+    );
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/999/illuminance/state', '123');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/999/temperature/state', '24');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/999/wind_speed/state', '4');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/999/rain/state', 'OFF');
     expect(clientMock.publish).toHaveBeenCalledWith('warema/999/availability', 'online', { retain: true });
+  });
+
+  test('callback should register Weather Station Pro type 63 as weather device', () => {
+    callback(null, {
+      topic: 'wms-vb-scanned-devices',
+      payload: { devices: [{ snr: 1485190, type: 63 }] }
+    });
+
+    expect(stickUsbMock.vnBlindAdd).not.toHaveBeenCalledWith(1485190, '1485190');
+    expect(clientMock.publish).toHaveBeenCalledWith(
+      'homeassistant/sensor/1485190/wind_speed/config',
+      expect.any(String),
+      { retain: true }
+    );
+    expect(clientMock.publish).toHaveBeenCalledWith(
+      'homeassistant/binary_sensor/1485190/rain/config',
+      expect.any(String),
+      { retain: true }
+    );
+
+    const discoveryCall = clientMock.publish.mock.calls.find(
+      ([topic]) => topic === 'homeassistant/sensor/1485190/wind_speed/config'
+    );
+    const payload = JSON.parse(discoveryCall[1]);
+    expect(payload.device.model).toBe('Weather Station Pro');
   });
 
   test('callback should handle wms-vb-scanned-devices', () => {

@@ -7,6 +7,8 @@ Diese Bridge bindet Warema-WMS-Geräte per MQTT in Home Assistant ein und ist mi
 ### Funktionen
 
 - Bindet Warema-WMS-Jalousien, Wetterstationen und weitere Geräte in Home Assistant ein.
+- Unterstützt Warema Weather Station Pro (Gerätetyp `63`) als Wetterstation.
+- Stellt Wetterwerte per MQTT Discovery als Home-Assistant-Sensoren bereit: Helligkeit, Temperatur, Windgeschwindigkeit und Regenstatus.
 - Kommunikation über MQTT (z. B. mit `core-mosquitto`).
 - Automatische Erkennung und Registrierung von Geräten.
 - Retained Discovery- und Availability-Topics für robustes Recovery nach Home-Assistant-Neustarts.
@@ -43,6 +45,19 @@ Passe die Optionen im Add-on an:
 | `wms_channel`     | WMS-Kanal                            | `17`                          |
 | `ignored_devices` | Kommagetrennte Geräte-IDs ignorieren | (leer)                        |
 | `force_devices`   | Kommagetrennte Geräte-IDs erzwingen  | (leer)                        |
+
+#### Wetterstationen
+
+Erkannte Warema-WMS-Wetterstationen, inklusive Weather Station Pro mit Gerätetyp `63`, werden nicht als Jalousien registriert. Stattdessen veröffentlicht die Bridge MQTT-Discovery-Nachrichten für Home Assistant und aktualisiert die Messwerte bei eingehenden Wetter-Broadcasts.
+
+Verfügbare Entitäten:
+
+| Entität | MQTT-State-Topic | Home-Assistant-Typ | Einheit / Werte |
+|---------|------------------|--------------------|-----------------|
+| Helligkeit | `warema/<serial>/illuminance/state` | Sensor | `lx` |
+| Temperatur | `warema/<serial>/temperature/state` | Sensor | `°C` |
+| Windgeschwindigkeit | `warema/<serial>/wind_speed/state` | Sensor | `m/s` |
+| Regen | `warema/<serial>/rain/state` | Binary Sensor | `ON` / `OFF` |
 
 #### Logging
 
@@ -129,6 +144,8 @@ This bridge integrates Warema WMS devices into Home Assistant via MQTT and is co
 ### Features
 
 - Integrates Warema WMS blinds, weather stations, and other devices into Home Assistant.
+- Supports Warema Weather Station Pro (device type `63`) as a weather station.
+- Exposes weather values through MQTT discovery as Home Assistant sensors: illuminance, temperature, wind speed, and rain status.
 - MQTT communication (e.g. with `core-mosquitto`).
 - Automatic device discovery and registration.
 - Retained discovery and availability topics for robust Home Assistant restart recovery.
@@ -165,6 +182,19 @@ Configure these add-on options:
 | `wms_channel`     | WMS channel                          | `17`                          |
 | `ignored_devices` | Comma-separated device IDs to ignore | (empty)                       |
 | `force_devices`   | Comma-separated device IDs to force  | (empty)                       |
+
+#### Weather stations
+
+Detected Warema WMS weather stations, including Weather Station Pro devices with device type `63`, are not registered as blinds. Instead, the bridge publishes MQTT discovery messages for Home Assistant and updates measurements whenever weather broadcasts are received.
+
+Available entities:
+
+| Entity | MQTT state topic | Home Assistant type | Unit / values |
+|--------|------------------|---------------------|---------------|
+| Illuminance | `warema/<serial>/illuminance/state` | Sensor | `lx` |
+| Temperature | `warema/<serial>/temperature/state` | Sensor | `°C` |
+| Wind speed | `warema/<serial>/wind_speed/state` | Sensor | `m/s` |
+| Rain | `warema/<serial>/rain/state` | Binary sensor | `ON` / `OFF` |
 
 #### Logging
 

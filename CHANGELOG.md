@@ -2,6 +2,12 @@
 
 All notable changes to this Home Assistant add-on are documented in this file.
 
+## 3.0.2
+
+- Fix #34: Added Weather Station Pro (device type `63`) support as a weather station so it is not registered as a blind.
+- MQTT Discovery: Weather stations now publish Home Assistant discovery for illuminance, temperature, wind speed, and rain.
+- MQTT runtime: Weather broadcasts now immediately publish sensor state updates, including wind speed and rain status.
+
 ## 3.0.1
 
 - Fix #30: Keep the existing WMS USB stick instance across MQTT reconnects so the serial connection is not reinitialized repeatedly.
