@@ -83,11 +83,11 @@ describe('bridge.js', () => {
     expect(payload.position_open).toBe(100);
     expect(payload.position_closed).toBe(0);
     expect(payload.state_topic).toBe('warema/12345/state');
-    expect(payload.state_open).toBe('open');
-    expect(payload.state_opening).toBe('opening');
-    expect(payload.state_closed).toBe('closed');
-    expect(payload.state_closing).toBe('closing');
-    expect(payload.state_stopped).toBe('stopped');
+    expect(payload.state_open).toBe('OPEN');
+    expect(payload.state_opening).toBe('OPENING');
+    expect(payload.state_closed).toBe('CLOSED');
+    expect(payload.state_closing).toBe('CLOSING');
+    expect(payload.state_stopped).toBe('STOPPED');
     expect(payload.tilt_status_topic).toBeUndefined();
     expect(payload.tilt_command_topic).toBeUndefined();
   });
@@ -152,7 +152,7 @@ describe('bridge.js', () => {
     callback(null, msg);
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/position', '50');
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/tilt', '55');
-    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'stopped');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'STOPPED');
   });
 
   test('callback should normalize Warema position and tilt values for MQTT', () => {
@@ -163,6 +163,7 @@ describe('bridge.js', () => {
 
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/position', '100');
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/tilt', '0');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'OPEN');
 
     callback(null, {
       topic: 'wms-vb-blind-position-update',
@@ -171,9 +172,10 @@ describe('bridge.js', () => {
 
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/position', '0');
     expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/tilt', '100');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'CLOSED');
   });
 
-  test('callback should publish movement state from position updates', () => {
+  test('callback should publish a confirmed stopped state for intermediate position updates', () => {
     callback(null, {
       topic: 'wms-vb-blind-position-update',
       payload: { snr: 12345, position: 80, angle: 10 }
@@ -184,7 +186,47 @@ describe('bridge.js', () => {
       payload: { snr: 12345, position: 40, angle: 10 }
     });
 
-    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'opening');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'STOPPED');
+  });
+
+  test('callback should clear commanded direction on the next confirmed position update', () => {
+    callback(null, {
+      topic: 'wms-vb-blind-position-update',
+      payload: { snr: 12345, position: 20, angle: 10 }
+    });
+
+    handlers.message('warema/12345/set', Buffer.from('CLOSE'));
+    callback(null, {
+      topic: 'wms-vb-blind-position-update',
+      payload: { snr: 12345, position: 60, angle: 10 }
+    });
+    callback(null, {
+      topic: 'wms-vb-blind-position-update',
+      payload: { snr: 12345, position: 100, angle: 10 }
+    });
+
+    const publishedStates = clientMock.publish.mock.calls
+      .filter(([topic]) => topic === 'warema/12345/state')
+      .map(([, state]) => state);
+    expect(publishedStates.slice(-3)).toEqual(['CLOSING', 'STOPPED', 'CLOSED']);
+  });
+
+  test('set_position should finish as stopped when its intermediate target is reached', () => {
+    callback(null, {
+      topic: 'wms-vb-blind-position-update',
+      payload: { snr: 12345, position: 20, angle: 10 }
+    });
+
+    handlers.message('warema/12345/set_position', Buffer.from('40'));
+    callback(null, {
+      topic: 'wms-vb-blind-position-update',
+      payload: { snr: 12345, position: 60, angle: 10 }
+    });
+
+    const publishedStates = clientMock.publish.mock.calls
+      .filter(([topic]) => topic === 'warema/12345/state')
+      .map(([, state]) => state);
+    expect(publishedStates.slice(-2)).toEqual(['CLOSING', 'STOPPED']);
   });
 
   test('callback should handle wms-vb-rcv-weather-broadcast for new station', () => {
@@ -329,13 +371,13 @@ describe('bridge.js', () => {
     });
     handlers.message('warema/12345/set', Buffer.from('CLOSE'));
     expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 100);
-    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'closing');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'CLOSING');
     handlers.message('warema/12345/set', Buffer.from('OPEN'));
     expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 0);
-    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'opening');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'OPENING');
     handlers.message('warema/12345/set', Buffer.from('STOP'));
     expect(stickUsbMock.vnBlindStop).toHaveBeenCalledWith(12345);
-    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'open');
+    expect(clientMock.publish).toHaveBeenCalledWith('warema/12345/state', 'STOPPED');
     handlers.message('warema/12345/set_position', Buffer.from('55'));
     expect(stickUsbMock.vnBlindSetPosition).toHaveBeenCalledWith(12345, 45, 30);
     handlers.message('warema/12345/set_tilt', Buffer.from('10'));
