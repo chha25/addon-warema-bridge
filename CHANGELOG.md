@@ -2,6 +2,12 @@
 
 All notable changes to this Home Assistant add-on are documented in this file.
 
+## 3.0.4
+
+- Fix: Cover state payloads now use the Home Assistant MQTT defaults: `OPEN`, `OPENING`, `CLOSED`, `CLOSING`, and `STOPPED`.
+- MQTT runtime: Every confirmed position update clears an optimistic movement state: end positions publish `OPEN`/`CLOSED`, while intermediate positions publish `STOPPED`.
+- Tests: Added regression coverage for standard discovery values and for movement states being cleared by confirmed position updates and `STOP`.
+
 ## 3.0.3
 
 - Fix #36: Weather Station Pro wind normalization now robustly handles decimal wind values from weather broadcasts.

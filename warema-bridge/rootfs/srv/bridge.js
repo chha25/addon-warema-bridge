@@ -31,6 +31,14 @@ const DEVICE_CATEGORIES = {
   WEATHER: 'weather',
 };
 
+const COVER_STATES = {
+  OPEN: 'OPEN',
+  OPENING: 'OPENING',
+  CLOSED: 'CLOSED',
+  CLOSING: 'CLOSING',
+  STOPPED: 'STOPPED',
+};
+
 const POSITION_UPDATE_INTERVAL_MS = 30000;
 const DEFAULT_WMS_KEY = '00112233445566778899AABBCCDDEEFF';
 const MQTT_PAYLOAD_LIMIT = 1024;
@@ -204,11 +212,11 @@ const createShadingPayload = (serialNumber, model, supportsTilt) => ({
   position_closed: 0,
   command_topic: `warema/${serialNumber}/set`,
   state_topic: buildStateTopic(serialNumber),
-  state_open: 'open',
-  state_opening: 'opening',
-  state_closed: 'closed',
-  state_closing: 'closing',
-  state_stopped: 'stopped',
+  state_open: COVER_STATES.OPEN,
+  state_opening: COVER_STATES.OPENING,
+  state_closed: COVER_STATES.CLOSED,
+  state_closing: COVER_STATES.CLOSING,
+  state_stopped: COVER_STATES.STOPPED,
   position_topic: `warema/${serialNumber}/position`,
   set_position_topic: `warema/${serialNumber}/set_position`,
   ...(supportsTilt
@@ -452,14 +460,14 @@ const updateCachedShadeState = (serialNumber, nextState) => {
 
 const deriveStateFromPosition = (position) => {
   if (position === 0) {
-    return 'open';
+    return COVER_STATES.OPEN;
   }
 
   if (position === 100) {
-    return 'closed';
+    return COVER_STATES.CLOSED;
   }
 
-  return 'stopped';
+  return COVER_STATES.STOPPED;
 };
 
 const deriveStateFromMovement = (previousPosition, nextPosition) => {
@@ -468,11 +476,11 @@ const deriveStateFromMovement = (previousPosition, nextPosition) => {
   }
 
   if (nextPosition > previousPosition) {
-    return 'closing';
+    return COVER_STATES.CLOSING;
   }
 
   if (nextPosition < previousPosition) {
-    return 'opening';
+    return COVER_STATES.OPENING;
   }
 
   return deriveStateFromPosition(nextPosition);
@@ -490,8 +498,7 @@ const handleBlindPositionUpdate = (payload) => {
   }
 
   const serialNumber = payload.snr.toString();
-  const previousPosition = shadePosition[serialNumber]?.position;
-  const nextState = deriveStateFromMovement(previousPosition, payload.position);
+  const nextState = deriveStateFromPosition(payload.position);
   log(
     'trace',
     `Blind ${serialNumber} position update: position=${payload.position}, angle=${payload.angle}, state=${nextState}`,
@@ -605,17 +612,15 @@ const handleSetCommand = (serialNumber, deviceId, command) => {
   if (command === 'CLOSE') {
     log('debug', `Command CLOSE for ${serialNumber}: setting Warema position 100`);
     stickUsb.vnBlindSetPosition(deviceId, 100);
-    updateCachedShadeState(serialNumber, { position: 100 });
-    publishShadeState(serialNumber, 'closing');
+    publishShadeState(serialNumber, COVER_STATES.CLOSING);
   } else if (command === 'OPEN') {
     log('debug', `Command OPEN for ${serialNumber}: setting Warema position 0`);
     stickUsb.vnBlindSetPosition(deviceId, 0);
-    updateCachedShadeState(serialNumber, { position: 0 });
-    publishShadeState(serialNumber, 'opening');
+    publishShadeState(serialNumber, COVER_STATES.OPENING);
   } else if (command === 'STOP') {
     log('debug', `Command STOP for ${serialNumber}`);
     stickUsb.vnBlindStop(deviceId);
-    publishShadeState(serialNumber, deriveStateFromPosition(resolveCurrentPosition(serialNumber)));
+    publishShadeState(serialNumber, COVER_STATES.STOPPED);
   } else {
     log('warning', `Ignoring unsupported set command for ${serialNumber}: ${command}`);
   }
@@ -674,7 +679,6 @@ const handleWaremaMessage = (topic, message) => {
         stickUsb.vnBlindSetPosition(deviceId, requestedPosition);
       }
 
-      updateCachedShadeState(serialNumber, { position: requestedPosition });
       publishShadeState(serialNumber, deriveStateFromMovement(currentPosition, requestedPosition));
       break;
     }
