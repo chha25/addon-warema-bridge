@@ -6,6 +6,7 @@ All notable changes to this Home Assistant add-on are documented in this file.
 
 - Fix: Cover state payloads now use the Home Assistant MQTT defaults: `OPEN`, `OPENING`, `CLOSED`, `CLOSING`, and `STOPPED`.
 - MQTT runtime: Every confirmed position update clears an optimistic movement state: end positions publish `OPEN`/`CLOSED`, while intermediate positions publish `STOPPED`.
+- MQTT runtime: Pending position commands remain available to immediately following tilt commands without replacing the last confirmed position.
 - Tests: Added regression coverage for standard discovery values and for movement states being cleared by confirmed position updates and `STOP`.
 
 ## 3.0.3

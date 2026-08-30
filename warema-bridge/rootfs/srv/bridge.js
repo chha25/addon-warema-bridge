@@ -510,6 +510,7 @@ const handleBlindPositionUpdate = (payload) => {
   updateCachedShadeState(serialNumber, {
     position: payload.position,
     angle: payload.angle,
+    pendingPosition: undefined,
   });
 };
 
@@ -585,6 +586,9 @@ let stickUsb;
 
 const resolveCurrentPosition = (serialNumber) => shadePosition[serialNumber]?.position;
 const resolveCurrentAngle = (serialNumber) => shadePosition[serialNumber]?.angle;
+const resolvePositionForCommand = (serialNumber) => (
+  shadePosition[serialNumber]?.pendingPosition ?? resolveCurrentPosition(serialNumber)
+);
 
 const ensureStickInitialized = () => {
   if (stickUsb) {
@@ -612,14 +616,17 @@ const handleSetCommand = (serialNumber, deviceId, command) => {
   if (command === 'CLOSE') {
     log('debug', `Command CLOSE for ${serialNumber}: setting Warema position 100`);
     stickUsb.vnBlindSetPosition(deviceId, 100);
+    updateCachedShadeState(serialNumber, { pendingPosition: 100 });
     publishShadeState(serialNumber, COVER_STATES.CLOSING);
   } else if (command === 'OPEN') {
     log('debug', `Command OPEN for ${serialNumber}: setting Warema position 0`);
     stickUsb.vnBlindSetPosition(deviceId, 0);
+    updateCachedShadeState(serialNumber, { pendingPosition: 0 });
     publishShadeState(serialNumber, COVER_STATES.OPENING);
   } else if (command === 'STOP') {
     log('debug', `Command STOP for ${serialNumber}`);
     stickUsb.vnBlindStop(deviceId);
+    updateCachedShadeState(serialNumber, { pendingPosition: undefined });
     publishShadeState(serialNumber, COVER_STATES.STOPPED);
   } else {
     log('warning', `Ignoring unsupported set command for ${serialNumber}: ${command}`);
@@ -679,11 +686,12 @@ const handleWaremaMessage = (topic, message) => {
         stickUsb.vnBlindSetPosition(deviceId, requestedPosition);
       }
 
+      updateCachedShadeState(serialNumber, { pendingPosition: requestedPosition });
       publishShadeState(serialNumber, deriveStateFromMovement(currentPosition, requestedPosition));
       break;
     }
     case 'set_tilt': {
-      const currentPosition = resolveCurrentPosition(serialNumber);
+      const currentPosition = resolvePositionForCommand(serialNumber);
       const requestedHaTilt = parseNumericPayload(stringMessage, 0, 100);
       if (requestedHaTilt === null) {
         log('warning', `Ignoring invalid tilt payload for ${serialNumber}: ${stringMessage}`);
