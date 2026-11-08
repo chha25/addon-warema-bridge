@@ -22,5 +22,6 @@ RUN npm ci --omit=dev \
 
 COPY warema-bridge/rootfs/ /
 
-RUN chmod a+x /etc/services.d/warema-bridge/run
+RUN bash -n /etc/services.d/warema-bridge/run \
+  && chmod a+x /etc/services.d/warema-bridge/run
 

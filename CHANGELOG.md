@@ -2,6 +2,14 @@
 
 All notable changes to this Home Assistant add-on are documented in this file.
 
+## 3.0.5
+
+- Dependencies: Updated MQTT.js to 5.16.1 and its transitive dependencies `ws` to 8.22.2 and `ip-address` to 10.7.6 to resolve known production dependency vulnerabilities.
+- Maintenance: Updated Jest to 30.5.2 and synchronized `package-lock.json`.
+- Containers: The standalone image now installs only production dependencies, matching the Home Assistant add-on.
+- Startup: Enforced LF line endings for the add-on service script and added a Bash syntax check during the image build.
+- Validation: Verified Node.js 22 and 24 with 27 unit tests and seven MQTT integration scenarios using an isolated broker and a mocked WMS stick; the production dependency audit reports no findings.
+
 ## 3.0.4
 
 - Fix: Cover state payloads now use the Home Assistant MQTT defaults: `OPEN`, `OPENING`, `CLOSED`, `CLOSING`, and `STOPPED`.
