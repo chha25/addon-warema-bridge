@@ -1,0 +1,17 @@
+ARG NODE_VERSION=24
+FROM node:${NODE_VERSION}-bookworm-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends mosquitto python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /srv
+
+COPY warema-bridge/rootfs/srv/package.json warema-bridge/rootfs/srv/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY warema-bridge/rootfs/srv/bridge.js ./
+COPY warema-bridge/rootfs/srv/__tests__/ ./__tests__/
+COPY warema-bridge/rootfs/srv/integration/ ./integration/
+
+CMD ["sh", "-ec", "npm run lint && npm run build && npm test -- --runInBand && npm run smoke && npm run test:integration"]

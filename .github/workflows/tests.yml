@@ -41,5 +41,11 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Install isolated MQTT test broker
+        run: sudo apt-get update && sudo apt-get install -y mosquitto
+
+      - name: MQTT integration tests
+        run: npm run test:integration
+
       - name: Smoke test
         run: npm run smoke

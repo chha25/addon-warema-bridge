@@ -116,6 +116,57 @@ npm install
 node bridge.js
 ```
 
+#### MQTT-Integrationstests ohne Hardware
+
+Mit Docker lassen sich alle Prüfungen einschließlich Jest und MQTT-Integration
+ohne lokale Node.js- oder Mosquitto-Installation ausführen. Im Repository-Root:
+
+```sh
+docker compose -f compose.tests.yaml run --build --rm node24
+docker compose -f compose.tests.yaml run --build --rm node22
+```
+
+Alternativ bei lokal installiertem npm aus `warema-bridge/rootfs/srv`:
+`npm run test:docker` (Node 24) oder `npm run test:docker:22` (Node 22).
+Docker Compose baut das Testimage und entfernt den Container nach dem Lauf.
+Die Build-Schritte werden gecacht. Der Testlauf benötigt keine USB-Freigaben,
+veröffentlicht keine Ports und verwendet keine Host-Verzeichnisse als Volumes.
+
+Die bestehende Jest-Suite mockt MQTT und den WMS-Stick. Die separate
+Integrationstestsuite verwendet dagegen die installierte MQTT.js-Version und
+einen echten Mosquitto-Broker; nur der WMS-Stick ist gemockt.
+
+Mosquitto installieren (Ubuntu: `sudo apt-get install mosquitto`, macOS:
+`brew install mosquitto`, Windows: offizielles Paket von
+[mosquitto.org](https://mosquitto.org/download/)). Ein laufender Broker oder
+Docker ist nicht erforderlich. Aus `warema-bridge/rootfs/srv` starten:
+
+```sh
+npm ci
+npm test -- --runInBand
+npm run test:integration
+```
+
+`mosquitto` muss im PATH liegen. Alternativ vor dem Test `MOSQUITTO_BIN` auf
+den Pfad zur ausführbaren Datei setzen, unter PowerShell beispielsweise:
+
+```powershell
+$env:MOSQUITTO_BIN = 'C:\Program Files\mosquitto\mosquitto.exe'
+npm run test:integration
+```
+
+Jeder Test startet einen eigenen Broker auf `127.0.0.1` mit zufälligem Port,
+temporärer Konfiguration und ohne persistente Daten sowie einen eigenen
+Bridge-Prozess. Es werden keine produktiven Broker oder USB-Geräte verwendet.
+Prozesse und temporäre Dateien werden nach jedem Test entfernt. Fehlt Mosquitto,
+schlagen die Tests mit einem entsprechenden Hinweis fehl.
+
+Geprüft werden retained Discovery und Availability, Positionsbefehle und
+Eingabevalidierung, bestätigte Positions-/Lamellenmeldungen, erneute Discovery
+bei HA-Start, Broker-Reconnect ohne erneute Stick-Initialisierung und retained
+Last Will bei Prozessabbruch. Die Tests verwenden das bisherige MQTT-3.1.1-Protokoll
+und laufen in CI unter Node.js 22 und 24. Sie ersetzen keinen Hardwaretest.
+
 ### Projektstruktur
 
 - `config.yaml` – Home-Assistant-Add-on-Konfiguration
@@ -252,6 +303,56 @@ For ARM64, use `linux/aarch64` instead of `linux/amd64`. The full add-on startup
 npm install
 node bridge.js
 ```
+
+#### MQTT integration tests without hardware
+
+Docker can run all checks, including Jest and MQTT integration tests, without
+installing Node.js or Mosquitto locally. From the repository root:
+
+```sh
+docker compose -f compose.tests.yaml run --build --rm node24
+docker compose -f compose.tests.yaml run --build --rm node22
+```
+
+Alternatively, with npm installed locally, run `npm run test:docker` (Node 24)
+or `npm run test:docker:22` (Node 22) from `warema-bridge/rootfs/srv`.
+Docker Compose builds the test image and removes the container after execution.
+Build steps are cached. Tests require no USB access, publish no ports, and do not
+mount host directories as volumes.
+
+The existing Jest suite mocks MQTT and the WMS stick. The separate integration
+suite uses the installed MQTT.js version and a real Mosquitto broker, replacing
+only the WMS stick.
+
+Install Mosquitto (`sudo apt-get install mosquitto` on Ubuntu,
+`brew install mosquitto` on macOS, or the official Windows package from
+[mosquitto.org](https://mosquitto.org/download/)). No running broker or Docker
+is required. Run from `warema-bridge/rootfs/srv`:
+
+```sh
+npm ci
+npm test -- --runInBand
+npm run test:integration
+```
+
+Put `mosquitto` on PATH or set `MOSQUITTO_BIN` to its executable path. For example,
+in PowerShell:
+
+```powershell
+$env:MOSQUITTO_BIN = 'C:\Program Files\mosquitto\mosquitto.exe'
+npm run test:integration
+```
+
+Each test starts its own broker on a random loopback port with a temporary
+configuration and persistence disabled, plus a separate bridge process. It never
+connects to production brokers or USB hardware. Processes and temporary files
+are cleaned up after each test. Missing Mosquitto causes an explicit test failure.
+
+Coverage includes retained discovery and availability, position commands and input
+validation, confirmed position/tilt updates, discovery after HA startup, broker
+reconnect without reinitializing the stick, and retained Last Will after abrupt
+process termination. Tests retain the existing MQTT 3.1.1 protocol and run in CI
+on Node.js 22 and 24. They do not replace hardware integration tests.
 
 ### Project structure
 

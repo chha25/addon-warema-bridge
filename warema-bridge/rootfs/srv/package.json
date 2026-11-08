@@ -12,7 +12,10 @@
     "lint": "node --check bridge.js",
     "build": "node --check bridge.js",
     "smoke": "node --check bridge.js",
-    "test": "jest"
+    "test": "jest",
+    "test:integration": "node --test integration/bridge.integration.cjs",
+    "test:docker": "docker compose -f ../../../compose.tests.yaml run --build --rm node24",
+    "test:docker:22": "docker compose -f ../../../compose.tests.yaml run --build --rm node22"
   },
   "engines": {
     "node": "^22.0.0 || ^24.0.0",

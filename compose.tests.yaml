@@ -1,0 +1,16 @@
+name: warema-bridge-tests
+
+services:
+  node24:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        NODE_VERSION: "24"
+
+  node22:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        NODE_VERSION: "22"
