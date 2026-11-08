@@ -43,9 +43,16 @@ jobs:
         run: npm test
 
       - name: Install isolated MQTT test broker
-        run: sudo apt-get update && sudo apt-get install -y mosquitto
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mosquitto
+          # Ubuntu's Mosquitto AppArmor profile permits configs below conf.d,
+          # but rejects the default /tmp location used by os.tmpdir().
+          sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" /etc/mosquitto/conf.d/warema-tests
 
       - name: MQTT integration tests
+        env:
+          TMPDIR: /etc/mosquitto/conf.d/warema-tests
         run: npm run test:integration
 
       - name: Smoke test
